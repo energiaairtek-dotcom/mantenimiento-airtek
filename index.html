@@ -4,10 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Airtek - Mantenimiento Preventivo Zulia</title>
+    
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- jsPDF & AutoTable para Exportar a PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
     
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
@@ -37,6 +44,16 @@
 
         .pulse-online {
             animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        .pulse-executing {
+            animation: pulse-border 2s infinite;
+        }
+
+        @keyframes pulse-border {
+            0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
         }
 
         @keyframes pulse {
@@ -137,6 +154,7 @@
 
         const ChevronLeft = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>;
         const ChevronRight = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>;
+        const DocumentPdfIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>;
 
         const App = () => {
             const [user, setUser] = useState(null);
@@ -151,17 +169,19 @@
             const [nodes, setNodes] = useState([]);
             const [schedules, setSchedules] = useState([]);
 
-            const [newZone, setNewZone] = useState({ name: '', supervisorEmail: '', color: ZONE_COLORS[0] });
+            const [newZone, setNewZone] = useState({ name: '', color: ZONE_COLORS[0] });
             const [newNode, setNewNode] = useState({ name: '', zoneId: '' });
             
             const [newSchedule, setNewSchedule] = useState({
                 date: '',
                 zoneId: '',
-                techs: '',
                 selectedNodes: [],
                 recurring: false,
                 repeatDays: 30
             });
+
+            // Estado para el modal/input de técnicos
+            const [techPrompt, setTechPrompt] = useState({ scheduleId: null, techs: '' });
 
             // Calendar state
             const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -240,11 +260,19 @@
                 try {
                     await addDoc(collection(dbRef.current, 'artifacts', appId, 'public', 'data', 'pm_zones'), {
                         name: newZone.name.toUpperCase(),
-                        supervisorEmail: newZone.supervisorEmail.toLowerCase(),
                         color: newZone.color,
                         createdAt: serverTimestamp()
                     });
-                    setNewZone({ name: '', supervisorEmail: '', color: ZONE_COLORS[0] });
+                    setNewZone({ name: '', color: ZONE_COLORS[0] });
+                } catch(e) { console.error(e); }
+            };
+
+            const handleUpdateZoneColor = async (zoneId, newColor) => {
+                const { doc, updateDoc } = window.FirebaseSDK;
+                try {
+                    await updateDoc(doc(dbRef.current, 'artifacts', appId, 'public', 'data', 'pm_zones', zoneId), {
+                        color: newColor
+                    });
                 } catch(e) { console.error(e); }
             };
 
@@ -292,56 +320,48 @@
                 
                 const { collection, addDoc, serverTimestamp } = window.FirebaseSDK;
                 
-                // --- PRE-VALIDACIÓN Y CÁLCULO DE FECHAS ---
                 const datesToSave = [];
                 const baseDate = new Date(newSchedule.date + 'T00:00:00Z');
                 const occurrences = newSchedule.recurring ? 6 : 1;
                 
                 for (let i = 0; i < occurrences; i++) {
                     const targetDate = new Date(baseDate);
-                    // Sumar días para mantenimientos recurrentes
                     targetDate.setUTCDate(baseDate.getUTCDate() + (i * (newSchedule.recurring ? Number(newSchedule.repeatDays) : 0)));
                     
-                    // REGLA: Si cae fin de semana, mover al Lunes
                     let dayOfWeek = targetDate.getUTCDay();
                     if (dayOfWeek === 6) targetDate.setUTCDate(targetDate.getUTCDate() + 2); // Sábado -> Lunes
                     if (dayOfWeek === 0) targetDate.setUTCDate(targetDate.getUTCDate() + 1); // Domingo -> Lunes
 
                     const dateString = targetDate.toISOString().split('T')[0];
 
-                    // VALIDAR LÍMITE DE 3 NODOS POR DÍA EN LA BASE DE DATOS
                     const existingNodesCount = schedules
                         .filter(s => s.date === dateString)
                         .reduce((sum, s) => sum + (s.nodes?.length || 0), 0);
 
                     if (existingNodesCount + newSchedule.selectedNodes.length > 3) {
                         alert(`LÍMITE EXCEDIDO: El día ${dateString} ya tiene ${existingNodesCount} nodos programados.\nEl límite máximo de la empresa es de 3 nodos por día.\n\nOperación cancelada. Seleccione otra fecha.`);
-                        return; // Aborta la función, no guarda nada
+                        return; 
                     }
 
                     datesToSave.push(dateString);
                 }
 
-                // --- GUARDAR EN FIREBASE (Si pasó las validaciones) ---
                 try {
                     for (const dateString of datesToSave) {
                         await addDoc(collection(dbRef.current, 'artifacts', appId, 'public', 'data', 'pm_schedules'), {
                             date: dateString,
                             zoneId: newSchedule.zoneId,
-                            techs: newSchedule.techs.toUpperCase(),
+                            techs: '', // Se asignan luego
                             nodes: newSchedule.selectedNodes,
                             status: 'PENDIENTE',
                             createdAt: serverTimestamp(),
-                            isRecurring: newSchedule.recurring,
-                            notified: false 
+                            isRecurring: newSchedule.recurring
                         });
                     }
                     
-                    // Reseteo exitoso
-                    setSelectedDateDetails(datesToSave[0]); // Seleccionar el primer día en el calendario
-                    setNewSchedule({ date: '', zoneId: '', techs: '', selectedNodes: [], recurring: false, repeatDays: 30 });
+                    setSelectedDateDetails(datesToSave[0]); 
+                    setNewSchedule({ date: '', zoneId: '', selectedNodes: [], recurring: false, repeatDays: 30 });
                     
-                    // Asegurar que el calendario muestra el mes de la nueva fecha
                     const firstSavedDate = new Date(datesToSave[0] + 'T00:00:00Z');
                     setCurrentMonth(new Date(firstSavedDate.getFullYear(), firstSavedDate.getMonth(), 1));
                     
@@ -350,14 +370,80 @@
                 } catch(e) { console.error(e); }
             };
 
-            const toggleScheduleStatus = async (schedule) => {
-                const newStatus = schedule.status === 'PENDIENTE' ? 'COMPLETADO' : 'PENDIENTE';
+            // Flujo de estados: PENDIENTE -> EN EJECUCION -> COMPLETADO
+            const handleActionClick = async (sch) => {
+                const { doc, updateDoc } = window.FirebaseSDK;
+                const scheduleRef = doc(dbRef.current, 'artifacts', appId, 'public', 'data', 'pm_schedules', sch.id);
+
+                if (sch.status === 'PENDIENTE') {
+                    // Abrir prompt para pedir técnicos
+                    setTechPrompt({ scheduleId: sch.id, techs: '' });
+                } else if (sch.status === 'EN EJECUCION') {
+                    // Finalizar mantenimiento
+                    try {
+                        await updateDoc(scheduleRef, { status: 'COMPLETADO' });
+                    } catch(e) { console.error(e); }
+                } else if (sch.status === 'COMPLETADO') {
+                    // Reabrir (pasa a PENDIENTE de nuevo)
+                    try {
+                        await updateDoc(scheduleRef, { status: 'PENDIENTE', techs: '' });
+                    } catch(e) { console.error(e); }
+                }
+            };
+
+            const confirmStartExecution = async () => {
+                if (!techPrompt.techs.trim()) {
+                    alert("POR FAVOR, INGRESE LOS TÉCNICOS ASIGNADOS.");
+                    return;
+                }
                 const { doc, updateDoc } = window.FirebaseSDK;
                 try {
-                    await updateDoc(doc(dbRef.current, 'artifacts', appId, 'public', 'data', 'pm_schedules', schedule.id), {
-                        status: newStatus
+                    await updateDoc(doc(dbRef.current, 'artifacts', appId, 'public', 'data', 'pm_schedules', techPrompt.scheduleId), {
+                        status: 'EN EJECUCION',
+                        techs: techPrompt.techs.toUpperCase()
                     });
+                    setTechPrompt({ scheduleId: null, techs: '' });
                 } catch(e) { console.error(e); }
+            };
+
+            const exportToPDF = () => {
+                if (!window.jspdf || !window.jspdf.jsPDF) {
+                    alert("La librería PDF aún está cargando. Intente en unos segundos.");
+                    return;
+                }
+                const doc = new window.jspdf.jsPDF();
+                const completed = schedules.filter(s => s.status === 'COMPLETADO');
+                
+                if(completed.length === 0) {
+                    alert("NO HAY MANTENIMIENTOS COMPLETADOS PARA EXPORTAR.");
+                    return;
+                }
+
+                doc.setFontSize(16);
+                doc.setTextColor(13, 148, 136); // Teal-600
+                doc.text("HISTORIAL DE MANTENIMIENTO PREVENTIVO - AIRTEK", 14, 20);
+                
+                doc.setFontSize(10);
+                doc.setTextColor(100, 116, 139); // Slate-500
+                doc.text(`Generado el: ${new Date().toLocaleDateString('es-VE')}`, 14, 28);
+
+                const tableData = completed.map(s => [
+                    formatDate(s.date),
+                    getZoneName(s.zoneId),
+                    s.nodes.map(nId => getNodeName(nId)).join(', '),
+                    s.techs || 'NO REGISTRADO'
+                ]);
+
+                doc.autoTable({
+                    startY: 35,
+                    head: [['FECHA', 'ZONA', 'NODOS INTERVENIDOS', 'TÉCNICOS']],
+                    body: tableData,
+                    headStyles: { fillColor: [13, 148, 136] },
+                    styles: { fontSize: 8, cellPadding: 4 },
+                    alternateRowStyles: { fillColor: [248, 250, 252] }
+                });
+
+                doc.save("Historial_Mantenimientos_Airtek.pdf");
             };
 
             const nodesInSelectedZone = useMemo(() => {
@@ -385,14 +471,13 @@
                 const year = currentMonth.getFullYear();
                 const month = currentMonth.getMonth();
                 
-                const firstDay = new Date(year, month, 1).getDay(); // 0(Dom) a 6(Sab)
+                const firstDay = new Date(year, month, 1).getDay(); 
                 const daysInMonth = new Date(year, month + 1, 0).getDate();
 
                 const daysArray = [];
-                for (let i = 0; i < firstDay; i++) daysArray.push(null); // Espacios vacíos
+                for (let i = 0; i < firstDay; i++) daysArray.push(null); 
                 for (let i = 1; i <= daysInMonth; i++) daysArray.push(i);
 
-                // Agrupar schedules por fecha para el calendario
                 const schedulesByDate = {};
                 schedules.forEach(s => {
                     if(!schedulesByDate[s.date]) schedulesByDate[s.date] = [];
@@ -401,14 +486,12 @@
 
                 return (
                     <div className="bg-white p-4 sm:p-6 rounded-[2.5rem] shadow-premium border border-slate-100">
-                        {/* Cabecera del calendario */}
                         <div className="flex items-center justify-between mb-6 px-2">
                             <button onClick={prevMonth} className="p-2 bg-slate-50 hover:bg-teal-50 text-slate-600 hover:text-teal-600 rounded-xl transition-colors"><ChevronLeft /></button>
                             <h2 className="text-sm font-black text-slate-800 tracking-widest">{MONTH_NAMES[month]} {year}</h2>
                             <button onClick={nextMonth} className="p-2 bg-slate-50 hover:bg-teal-50 text-slate-600 hover:text-teal-600 rounded-xl transition-colors"><ChevronRight /></button>
                         </div>
 
-                        {/* Cuadrícula */}
                         <div className="grid grid-cols-7 gap-1 sm:gap-2">
                             {['DOM','LUN','MAR','MIE','JUE','VIE','SAB'].map(d => (
                                 <div key={d} className="text-[9px] font-black text-center text-slate-400 py-2 tracking-widest">{d}</div>
@@ -438,11 +521,17 @@
                                             {day}
                                         </div>
                                         
-                                        {/* Puntos de color para las tareas */}
                                         <div className="flex flex-wrap gap-1 justify-center mt-auto w-full px-1">
-                                            {daySchedules.map((s, i) => (
-                                                <div key={`${s.id}-${i}`} className={`w-2.5 h-2.5 rounded-full shadow-sm ${getZoneColor(s.zoneId)}`} title={getZoneName(s.zoneId)}></div>
-                                            ))}
+                                            {daySchedules.map((s, i) => {
+                                                const isExecuting = s.status === 'EN EJECUCION';
+                                                return (
+                                                    <div 
+                                                        key={`${s.id}-${i}`} 
+                                                        className={`w-2.5 h-2.5 rounded-full shadow-sm ${getZoneColor(s.zoneId)} ${isExecuting ? 'ring-2 ring-blue-400 animate-pulse' : ''}`} 
+                                                        title={`${getZoneName(s.zoneId)} - ${s.status}`}>
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 )
@@ -465,7 +554,7 @@
                                     <div className="flex items-center gap-1.5 mt-0.5"><span className={`w-1.5 h-1.5 rounded-full ${isCloud ? 'bg-emerald-500 pulse-online' : 'bg-red-500'}`}></span><p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{isCloud ? 'ONLINE' : 'OFFLINE'}</p></div>
                                 </div>
                             </div>
-                            <button onClick={() => setIsAdminMode(!isAdminMode)} className={`text-[9px] px-2 py-1 rounded-full font-black tracking-wider transition-colors ${isAdminMode ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-400'}`}>{isAdminMode ? 'MODO EDITOR' : 'VISTA LECTURA'}</button>
+                            <button onClick={() => setIsAdminMode(!isAdminMode)} className={`text-[9px] px-2 py-1 rounded-full font-black tracking-wider transition-colors ${isAdminMode ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-100 text-slate-400'}`}>{isAdminMode ? 'MODO EDITOR' : 'VISTA LECTURA'}</button>
                         </div>
                     </header>
 
@@ -474,9 +563,10 @@
                             {[
                                 {id: 'cronograma', label: 'CALENDARIO'}, 
                                 {id: 'programar', label: 'PROGRAMAR PM'}, 
-                                {id: 'maestro', label: 'ZONAS Y NODOS'}
+                                {id: 'historial', label: 'HISTORIAL'}, 
+                                {id: 'maestro', label: 'ZONAS/NODOS'}
                             ].map(t => (
-                                <button key={t.id} onClick={() => setActiveTab(t.id)} className={`flex-1 min-w-[120px] py-3 rounded-2xl font-black text-[10px] tracking-wider transition-all ${activeTab === t.id ? 'bg-teal-600 text-white shadow-lg' : 'text-slate-400 hover:text-teal-50'}`}>{t.label}</button>
+                                <button key={t.id} onClick={() => setActiveTab(t.id)} className={`flex-1 min-w-[100px] py-3 px-2 rounded-2xl font-black text-[10px] tracking-wider transition-all whitespace-nowrap ${activeTab === t.id ? 'bg-teal-600 text-white shadow-lg' : 'text-slate-400 hover:text-teal-500 hover:bg-slate-50'}`}>{t.label}</button>
                             ))}
                         </nav>
 
@@ -487,10 +577,9 @@
                                 <div className="space-y-6">
                                     {renderCalendar()}
 
-                                    {/* Detalles del día seleccionado */}
                                     <div className="space-y-4">
                                         <h3 className="text-[11px] font-black text-slate-500 px-4 border-l-4 border-teal-500 ml-2">
-                                            {selectedDateDetails ? `DETALLES: ${formatDate(selectedDateDetails)}` : 'SELECCIONE UN DÍA EN EL CALENDARIO'}
+                                            {selectedDateDetails ? `DETALLES: ${formatDate(selectedDateDetails)}` : 'SELECCIONE UN DÍA'}
                                         </h3>
                                         
                                         {selectedDateDetails && (
@@ -502,57 +591,100 @@
                                                 <div className="space-y-4">
                                                     {schedules.filter(s => s.date === selectedDateDetails).map(sch => {
                                                         const isCompleted = sch.status === 'COMPLETADO';
+                                                        const isExecuting = sch.status === 'EN EJECUCION';
+                                                        const isPending = sch.status === 'PENDIENTE';
+                                                        
                                                         const scheduleDate = new Date(sch.date + 'T00:00:00Z');
-                                                        const isPast = scheduleDate < new Date(new Date().setHours(0,0,0,0)) && !isCompleted;
+                                                        const isPast = scheduleDate < new Date(new Date().setHours(0,0,0,0)) && isPending;
+                                                        
                                                         const zColor = getZoneColor(sch.zoneId);
 
+                                                        // Border styling based on status
+                                                        let borderStyle = 'border-l-orange-400';
+                                                        if (isCompleted) borderStyle = 'border-l-teal-500 opacity-70';
+                                                        else if (isExecuting) borderStyle = 'border-l-blue-500 pulse-executing';
+                                                        else if (isPast) borderStyle = 'border-l-red-500';
+
                                                         return (
-                                                            <div key={sch.id} className={`bg-white p-5 rounded-[2rem] shadow-sm border-l-4 flex flex-col sm:flex-row gap-4 justify-between transition-all ${isCompleted ? 'border-l-teal-500 opacity-70' : (isPast ? 'border-l-red-500' : 'border-l-orange-400')}`}>
-                                                                <div className="space-y-3 flex-1">
-                                                                    <div className="flex items-center gap-2 flex-wrap">
-                                                                        <span className={`text-[9px] px-2 py-1 rounded font-black tracking-widest ${isCompleted ? 'bg-teal-100 text-teal-700' : (isPast ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700')}`}>
-                                                                            {isCompleted ? 'COMPLETADO' : (isPast ? 'VENCIDO' : 'PENDIENTE')}
-                                                                        </span>
-                                                                        <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded border border-slate-100">
-                                                                            <span className={`w-2 h-2 rounded-full ${zColor}`}></span>
-                                                                            <span className="text-[10px] font-black text-slate-600 tracking-wider">
-                                                                                {getZoneName(sch.zoneId)}
+                                                            <div key={sch.id} className={`bg-white p-5 rounded-[2rem] shadow-sm border-l-4 flex flex-col gap-4 transition-all ${borderStyle}`}>
+                                                                
+                                                                {/* Cabecera del Mantenimiento */}
+                                                                <div className="flex flex-col sm:flex-row gap-4 justify-between">
+                                                                    <div className="space-y-3 flex-1">
+                                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                                            {/* Badge de Estado */}
+                                                                            <span className={`text-[9px] px-2 py-1 rounded font-black tracking-widest ${isCompleted ? 'bg-teal-100 text-teal-700' : (isExecuting ? 'bg-blue-100 text-blue-700' : (isPast ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'))}`}>
+                                                                                {sch.status}
                                                                             </span>
+                                                                            {/* Zona */}
+                                                                            <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded border border-slate-100">
+                                                                                <span className={`w-2 h-2 rounded-full ${zColor}`}></span>
+                                                                                <span className="text-[10px] font-black text-slate-600 tracking-wider">
+                                                                                    {getZoneName(sch.zoneId)}
+                                                                                </span>
+                                                                            </div>
+                                                                            {sch.isRecurring && (
+                                                                                <span className="text-[9px] font-black text-blue-500 bg-blue-50 px-2 py-1 rounded flex items-center gap-1">REPETITIVO</span>
+                                                                            )}
                                                                         </div>
-                                                                        {sch.isRecurring && (
-                                                                            <span className="text-[9px] font-black text-blue-500 bg-blue-50 px-2 py-1 rounded flex items-center gap-1">
-                                                                                REPETITIVO
-                                                                            </span>
+                                                                        
+                                                                        <div className="text-[11px] text-slate-600 font-bold leading-relaxed bg-slate-50 p-3 rounded-xl">
+                                                                            <span className="text-slate-900 font-black block mb-1 text-[9px] tracking-widest text-teal-600">NODOS A INTERVENIR:</span>
+                                                                            <div className="flex flex-wrap gap-1">
+                                                                                {sch.nodes.map(nId => (
+                                                                                    <span key={nId} className="bg-white border border-slate-200 px-2 py-1 rounded-md shadow-sm text-[10px]">{getNodeName(nId)}</span>
+                                                                                ))}
+                                                                            </div>
+                                                                        </div>
+
+                                                                        {/* Mostrar técnicos si ya están asignados */}
+                                                                        {sch.techs && (
+                                                                            <div className="text-[9px] text-slate-500 font-black flex items-center gap-1.5 bg-slate-100 p-2 rounded-lg inline-flex">
+                                                                                <svg className="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                                                                                TÉCNICOS: <span className="text-slate-800">{sch.techs}</span>
+                                                                            </div>
                                                                         )}
                                                                     </div>
-                                                                    
-                                                                    <div className="text-[11px] text-slate-600 font-bold leading-relaxed bg-slate-50 p-3 rounded-xl">
-                                                                        <span className="text-slate-900 font-black block mb-1 text-[9px] tracking-widest text-teal-600">NODOS A INTERVENIR:</span>
-                                                                        <div className="flex flex-wrap gap-1">
-                                                                            {sch.nodes.map(nId => (
-                                                                                <span key={nId} className="bg-white border border-slate-200 px-2 py-1 rounded-md shadow-sm text-[10px]">{getNodeName(nId)}</span>
-                                                                            ))}
+
+                                                                    <div className="flex sm:flex-col gap-2 shrink-0 justify-center">
+                                                                        {/* Botones de Acción */}
+                                                                        {techPrompt.scheduleId !== sch.id && (
+                                                                            <button onClick={() => handleActionClick(sch)} className={`flex-1 sm:flex-none px-4 py-3 rounded-xl text-[10px] font-black tracking-widest transition-colors ${
+                                                                                isCompleted ? 'bg-slate-100 text-slate-400 hover:bg-slate-200' : 
+                                                                                isExecuting ? 'bg-blue-600 text-white shadow-md shadow-blue-200' : 
+                                                                                'bg-teal-600 text-white shadow-md shadow-teal-200'
+                                                                            }`}>
+                                                                                {isCompleted ? 'REABRIR TAREA' : (isExecuting ? 'FINALIZAR MANT.' : 'INICIAR TAREA')}
+                                                                            </button>
+                                                                        )}
+
+                                                                        {isAdminMode && techPrompt.scheduleId !== sch.id && (
+                                                                            <button onClick={() => deleteItem('pm_schedules', sch.id, 'ESTA PROGRAMACIÓN')} className="p-3 bg-red-50 hover:bg-red-100 text-red-500 rounded-xl flex items-center justify-center transition-colors">
+                                                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Formulario Inline para Técnicos al iniciar */}
+                                                                {techPrompt.scheduleId === sch.id && (
+                                                                    <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl mt-2 animate-in slide-in-from-top-2">
+                                                                        <label className="text-[9px] text-slate-500 font-black tracking-widest block mb-2">ASIGNAR TÉCNICOS PARA ESTA JORNADA</label>
+                                                                        <div className="flex flex-col sm:flex-row gap-2">
+                                                                            <input 
+                                                                                autoFocus
+                                                                                className="flex-1 p-3 bg-white rounded-xl text-[11px] font-black outline-none border border-slate-200 focus:border-teal-400" 
+                                                                                placeholder="EJ: L. RAMOS, D. CHACÍN"
+                                                                                value={techPrompt.techs}
+                                                                                onChange={(e) => setTechPrompt({...techPrompt, techs: e.target.value})}
+                                                                            />
+                                                                            <div className="flex gap-2">
+                                                                                <button onClick={() => setTechPrompt({scheduleId: null, techs: ''})} className="px-4 py-3 bg-slate-200 text-slate-600 rounded-xl text-[10px] font-black tracking-widest">CANCELAR</button>
+                                                                                <button onClick={confirmStartExecution} className="px-4 py-3 bg-teal-600 text-white rounded-xl text-[10px] font-black tracking-widest shadow-md">GUARDAR E INICIAR</button>
+                                                                            </div>
                                                                         </div>
                                                                     </div>
-
-                                                                    {sch.techs && (
-                                                                        <div className="text-[9px] text-slate-400 font-black flex items-center gap-1">
-                                                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
-                                                                            TÉCNICOS: <span className="text-slate-700">{sch.techs}</span>
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-
-                                                                <div className="flex sm:flex-col gap-2 shrink-0 justify-center">
-                                                                    <button onClick={() => toggleScheduleStatus(sch)} className={`flex-1 sm:flex-none px-4 py-3 rounded-xl text-[10px] font-black tracking-widest transition-colors ${isCompleted ? 'bg-slate-100 text-slate-400' : 'bg-teal-600 text-white shadow-md shadow-teal-200'}`}>
-                                                                        {isCompleted ? 'REABRIR' : 'MARCAR LISTO'}
-                                                                    </button>
-                                                                    {isAdminMode && (
-                                                                        <button onClick={() => deleteItem('pm_schedules', sch.id, 'ESTA PROGRAMACIÓN')} className="p-3 bg-red-50 text-red-500 rounded-xl flex items-center justify-center">
-                                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                                                        </button>
-                                                                    )}
-                                                                </div>
+                                                                )}
                                                             </div>
                                                         );
                                                     })}
@@ -568,12 +700,12 @@
                                 <form onSubmit={handleSaveSchedule} className="bg-white p-8 rounded-[2.5rem] shadow-premium border border-slate-100 space-y-6">
                                     <div className="text-center uppercase space-y-1">
                                         <h3 className="text-sm font-black text-teal-700">PROGRAMAR MANTENIMIENTO</h3>
-                                        <p className="text-[9px] text-slate-400 tracking-widest font-bold">MÁXIMO 3 NODOS POR DÍA | LOS FINES DE SEMANA PASAN AL LUNES</p>
+                                        <p className="text-[9px] text-slate-400 tracking-widest font-bold">MÁXIMO 3 NODOS POR DÍA | FINES DE SEMANA SALTAN AL LUNES</p>
                                     </div>
                                     
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div className="space-y-1">
-                                            <label className="text-[8px] text-slate-400 ml-2 uppercase font-black">FECHA BASE (SE AJUSTARÁ SI ES FIN DE SEMANA)</label>
+                                            <label className="text-[8px] text-slate-400 ml-2 uppercase font-black">FECHA BASE</label>
                                             <input required type="date" className="w-full p-4 bg-slate-50 rounded-2xl text-[12px] font-black outline-none border-2 border-transparent focus:border-teal-200" value={newSchedule.date} onChange={e=>setNewSchedule({...newSchedule, date: e.target.value})} />
                                         </div>
                                         <div className="space-y-1">
@@ -588,7 +720,7 @@
                                     {newSchedule.zoneId && (
                                         <div className="space-y-2 bg-slate-50 p-5 rounded-3xl border border-slate-100">
                                             <div className="flex justify-between items-end mb-3">
-                                                <label className="text-[9px] text-teal-600 uppercase font-black tracking-widest block">NODOS A INTERVENIR</label>
+                                                <label className="text-[9px] text-teal-600 uppercase font-black tracking-widest block">NODOS A INTERVENIR (MÁX 3)</label>
                                                 <span className={`text-[9px] font-black px-2 py-1 rounded-md ${newSchedule.selectedNodes.length === 3 ? 'bg-orange-100 text-orange-600' : 'bg-slate-200 text-slate-600'}`}>
                                                     SELECCIONADOS: {newSchedule.selectedNodes.length}/3
                                                 </span>
@@ -619,18 +751,74 @@
                                             <div className="space-y-1 animate-in slide-in-from-top-2 duration-200">
                                                 <label className="text-[8px] text-teal-600 ml-2 uppercase font-black">REPETIR CADA (DÍAS)</label>
                                                 <input type="number" className="w-full p-4 bg-white rounded-2xl text-[11px] font-black outline-none border-2 border-teal-200" value={newSchedule.repeatDays} onChange={e => setNewSchedule({...newSchedule, repeatDays: e.target.value})} placeholder="EJ: 30" min="1" />
-                                                <p className="text-[8px] text-teal-400 mt-1 ml-2 font-bold italic">EL SISTEMA GENERARÁ LAS PRÓXIMAS 6 CITAS (SALTANDO FINES DE SEMANA).</p>
+                                                <p className="text-[8px] text-teal-400 mt-1 ml-2 font-bold italic">EL SISTEMA GENERARÁ LAS PRÓXIMAS 6 CITAS.</p>
                                             </div>
                                         )}
                                     </div>
-
-                                    <div className="space-y-1">
-                                        <label className="text-[8px] text-slate-400 ml-2 uppercase font-black">TÉCNICOS ASIGNADOS (OPCIONAL)</label>
-                                        <input className="w-full p-4 bg-slate-50 rounded-2xl text-[11px] font-black outline-none border-2 border-transparent focus:border-teal-200" value={newSchedule.techs} onChange={e=>setNewSchedule({...newSchedule, techs: e.target.value.toUpperCase()})} placeholder="EJ: L. RAMOS, D. CHACÍN" />
+                                    
+                                    <div className="text-[9px] text-slate-400 font-bold italic text-center px-4">
+                                        * LOS TÉCNICOS SE ASIGNARÁN EN EL CALENDARIO AL MOMENTO DE INICIAR LA TAREA.
                                     </div>
 
-                                    <button type="submit" className="w-full bg-teal-600 text-white p-5 rounded-3xl font-black text-[11px] tracking-widest shadow-lg shadow-teal-200">GUARDAR PROGRAMACIÓN</button>
+                                    <button type="submit" className="w-full bg-teal-600 text-white p-5 rounded-3xl font-black text-[11px] tracking-widest shadow-lg shadow-teal-200">AGENDAR FECHAS</button>
                                 </form>
+                            )}
+
+                            {/* --- TAB: HISTORIAL --- */}
+                            {activeTab === 'historial' && (
+                                <div className="space-y-6">
+                                    <div className="bg-white p-6 sm:p-8 rounded-[2.5rem] shadow-premium border border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4">
+                                        <div>
+                                            <h2 className="text-sm font-black text-slate-800 tracking-widest">HISTORIAL DE EJECUCIÓN</h2>
+                                            <p className="text-[10px] text-slate-400 mt-1">MANTENIMIENTOS COMPLETADOS</p>
+                                        </div>
+                                        <button onClick={exportToPDF} className="bg-slate-900 hover:bg-slate-800 text-white px-6 py-3 rounded-2xl font-black text-[10px] tracking-widest flex items-center gap-2 transition-colors shadow-md">
+                                            <DocumentPdfIcon /> EXPORTAR PDF
+                                        </button>
+                                    </div>
+
+                                    <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden">
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-left border-collapse">
+                                                <thead>
+                                                    <tr className="bg-slate-50 border-b border-slate-100 text-[9px] text-slate-400 tracking-widest">
+                                                        <th className="p-4 font-black">FECHA</th>
+                                                        <th className="p-4 font-black">ZONA</th>
+                                                        <th className="p-4 font-black">NODOS INTERVENIDOS</th>
+                                                        <th className="p-4 font-black">TÉCNICOS</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="text-[11px] font-black text-slate-700">
+                                                    {schedules.filter(s => s.status === 'COMPLETADO').length === 0 ? (
+                                                        <tr>
+                                                            <td colSpan="4" className="p-8 text-center text-slate-400 font-bold text-[10px] tracking-widest">
+                                                                AÚN NO HAY MANTENIMIENTOS FINALIZADOS
+                                                            </td>
+                                                        </tr>
+                                                    ) : (
+                                                        schedules.filter(s => s.status === 'COMPLETADO')
+                                                        .sort((a,b) => new Date(b.date) - new Date(a.date)) // Ordenados más reciente primero
+                                                        .map(s => (
+                                                            <tr key={s.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+                                                                <td className="p-4 whitespace-nowrap">{formatDate(s.date)}</td>
+                                                                <td className="p-4">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className={`w-2 h-2 rounded-full ${getZoneColor(s.zoneId)}`}></span>
+                                                                        {getZoneName(s.zoneId)}
+                                                                    </div>
+                                                                </td>
+                                                                <td className="p-4 leading-relaxed">
+                                                                    {s.nodes.map(n => getNodeName(n)).join(', ')}
+                                                                </td>
+                                                                <td className="p-4 text-teal-700">{s.techs || 'NO REGISTRADO'}</td>
+                                                            </tr>
+                                                        ))
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
                             )}
 
                             {/* --- TAB: MAESTRO --- */}
@@ -650,7 +838,6 @@
                                                 <div className="text-center font-black text-slate-800 text-xs uppercase">NUEVA ZONA GEOGRÁFICA</div>
                                                 <div className="space-y-3">
                                                     <input required placeholder="NOMBRE DE LA ZONA (EJ: SAN FRANCISCO)" className="w-full p-4 bg-slate-50 rounded-2xl text-[11px] font-black outline-none border-2 border-transparent focus:border-teal-100" value={newZone.name} onChange={e=>setNewZone({...newZone, name: e.target.value.toUpperCase()})} />
-                                                    <input type="email" placeholder="CORREO DEL SUPERVISOR (PARA ALERTAS)" className="w-full p-4 bg-slate-50 rounded-2xl text-[11px] font-black outline-none border-2 border-transparent focus:border-teal-100" value={newZone.supervisorEmail} onChange={e=>setNewZone({...newZone, supervisorEmail: e.target.value})} />
                                                     
                                                     <div className="space-y-2 pt-2">
                                                         <label className="text-[8px] text-slate-400 uppercase font-black">COLOR PARA EL CALENDARIO</label>
@@ -661,24 +848,40 @@
                                                         </div>
                                                     </div>
 
-                                                    <button type="submit" className="w-full bg-slate-900 text-white p-4 rounded-2xl font-black text-[10px] tracking-widest mt-4">CREAR ZONA Y CONFIGURAR ALERTAS</button>
+                                                    <button type="submit" className="w-full bg-slate-900 text-white p-4 rounded-2xl font-black text-[10px] tracking-widest mt-4">CREAR ZONA</button>
                                                 </div>
                                             </form>
                                             
                                             <div className="space-y-2">
-                                                <h4 className="text-[10px] font-black text-slate-400 px-4 uppercase tracking-widest">ZONAS REGISTRADAS</h4>
+                                                <h4 className="text-[10px] font-black text-slate-400 px-4 uppercase tracking-widest flex justify-between">
+                                                    <span>ZONAS REGISTRADAS</span>
+                                                    {isAdminMode && <span className="text-teal-500">SELECCIONE COLOR PARA EDITAR</span>}
+                                                </h4>
                                                 {zones.map(z => (
                                                     <div key={z.id} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm">
                                                         <div className="flex justify-between items-center">
                                                             <div className="flex items-center gap-3">
                                                                 <div className={`w-4 h-4 rounded-full shadow-sm ${z.color || 'bg-slate-500'}`}></div>
-                                                                <div>
-                                                                    <span className="text-[12px] font-black text-slate-800">{z.name}</span>
-                                                                    <p className="text-[8px] text-slate-400 mt-0.5 font-bold tracking-wider">SUPERVISOR: {z.supervisorEmail || 'NO ASIGNADO'}</p>
+                                                                <span className="text-[12px] font-black text-slate-800">{z.name}</span>
+                                                            </div>
+                                                            {isAdminMode && <button onClick={() => deleteItem('pm_zones', z.id, z.name)} className="text-red-400 p-2 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>}
+                                                        </div>
+                                                        
+                                                        {/* Paleta de edición de color in-line (Solo visible en MODO EDITOR) */}
+                                                        {isAdminMode && (
+                                                            <div className="mt-4 pt-4 border-t border-slate-50">
+                                                                <div className="flex flex-wrap gap-1.5">
+                                                                    {ZONE_COLORS.map(color => (
+                                                                        <button 
+                                                                            key={color} 
+                                                                            onClick={() => handleUpdateZoneColor(z.id, color)} 
+                                                                            className={`w-6 h-6 rounded-full transition-all ${color} ${z.color === color ? 'ring-2 ring-offset-2 ring-teal-500 scale-110' : 'opacity-40 hover:opacity-100'}`}
+                                                                            title="Tocar para cambiar color"
+                                                                        ></button>
+                                                                    ))}
                                                                 </div>
                                                             </div>
-                                                            {isAdminMode && <button onClick={() => deleteItem('pm_zones', z.id, z.name)} className="text-red-400 p-2 bg-red-50 rounded-lg"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>}
-                                                        </div>
+                                                        )}
                                                     </div>
                                                 ))}
                                             </div>
