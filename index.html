@@ -127,14 +127,6 @@
         .cal-dots { display:flex; flex-wrap:wrap; gap:3px; justify-content:center; margin-top:auto; }
         .cal-dot  { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
 
-        /* Day capacity bar */
-        .cap-bar { width:100%; height:3px; background:#e2e8f0; border-radius:2px; margin-top:3px; overflow:hidden; }
-        .cap-fill { height:100%; border-radius:2px; transition:width .3s; }
-        .cap-0   { background:#e2e8f0; }
-        .cap-low { background:linear-gradient(90deg,var(--primary),var(--accent)); }
-        .cap-mid { background:linear-gradient(90deg,#f59e0b,#f97316); }
-        .cap-max { background:linear-gradient(90deg,#ef4444,#dc2626); }
-
         /* Overdue badge on cell */
         .cell-overdue-dot { position:absolute; top:4px; right:4px; width:7px; height:7px; background:#ef4444; border-radius:50%; box-shadow:0 0 0 2px rgba(239,68,68,.25); animation:pulse-r 2s infinite; }
 
@@ -414,9 +406,13 @@ const App = () => {
     const [tooltip,setTooltip]     = useState({ visible:false, x:0, y:0, date:'' });
     const tooltipTimer             = useRef(null);
 
-    // Filters
+    // Filters - calendar
     const [filterZone,setFilterZone]     = useState('');
     const [filterStatus,setFilterStatus] = useState('');
+    // Filters - history
+    const [histFilterZone,setHistFilterZone]   = useState('');
+    const [histFilterNode,setHistFilterNode]   = useState('');
+    const [histFilterTech,setHistFilterTech]   = useState('');
 
     const dbRef = useRef(null);
     const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-pm-app-id';
@@ -560,35 +556,66 @@ const App = () => {
         e.preventDefault();
         if(!newSch.date||!newSch.zoneId||newSch.selectedNodes.length===0){ alert("SELECCIONE FECHA, ZONA Y AL MENOS UN NODO."); return; }
         if(newSch.recurring&&newSch.repeatDays<=0){ alert("INTERVALO DEBE SER > 0."); return; }
-        const { addDoc: aDoc, serverTimestamp:sTs, writeBatch:wb } = window.FirebaseSDK;
+        const { serverTimestamp:sTs, writeBatch:wb } = window.FirebaseSDK;
         const batch = wb(dbRef.current);
         const schCol = db('pm_schedules');
+        // groupId links ALL nodes of this scheduling session across all dates
         const groupId = newSch.recurring ? Date.now().toString() : null;
+
         let nd = new Date(newSch.date+'T00:00:00Z');
         const ed = new Date(nd);
         if(newSch.recurring) ed.setFullYear(ed.getFullYear()+1);
+
+        // Track (date → slotsUsed) within this batch to check capacity
+        const batchSlots = {};
         const saved = [];
+
         while(nd<=ed){
+            // Skip weekends
             let dow = nd.getUTCDay();
             if(dow===6) nd.setUTCDate(nd.getUTCDate()+2);
             if(dow===0) nd.setUTCDate(nd.getUTCDate()+1);
+
+            // Find a date with enough slots for ALL selected nodes (1 slot each)
             let found=false, cd=new Date(nd);
             for(let i=0;i<30;i++){
                 let cdd=cd.getUTCDay();
                 if(cdd!==6&&cdd!==0){
                     let ds=cd.toISOString().split('T')[0];
-                    let ex=schedules.filter(s=>s.date===ds).reduce((acc,s)=>acc+(s.nodes?.length||0),0);
-                    let eq=saved.filter(d=>d===ds).length*newSch.selectedNodes.length;
-                    if(ex+eq+newSch.selectedNodes.length<=5){found=true;nd=new Date(cd);break;}
+                    // Existing inspections in DB for this date
+                    let existingCount = schedules.filter(s=>s.date===ds).length;
+                    // Slots already queued in this batch
+                    let batchCount = batchSlots[ds] || 0;
+                    if(existingCount + batchCount + newSch.selectedNodes.length <= 5){
+                        found=true; nd=new Date(cd); break;
+                    }
                 }
                 cd.setUTCDate(cd.getUTCDate()+1);
             }
-            if(!found){alert("SIN ESPACIO EN FECHAS CERCANAS.");break;}
+            if(!found){alert("SIN ESPACIO (MÁX 5 INSPECC./DÍA) EN FECHAS CERCANAS.");break;}
+
             const ds=nd.toISOString().split('T')[0];
             saved.push(ds);
-            const { doc:fd } = window.FirebaseSDK;
-            const ref=fd(schCol);
-            batch.set(ref,{date:ds,zoneId:newSch.zoneId,techs:'',odt:'',reason:'',nodes:newSch.selectedNodes,status:'PENDIENTE',createdAt:sTs(),isRecurring:newSch.recurring,groupId,repeatDays:newSch.recurring?Number(newSch.repeatDays):null});
+            batchSlots[ds] = (batchSlots[ds]||0) + newSch.selectedNodes.length;
+
+            // One document per node
+            newSch.selectedNodes.forEach(nodeId => {
+                const { doc:fd } = window.FirebaseSDK;
+                const ref = fd(schCol);
+                batch.set(ref, {
+                    date: ds,
+                    zoneId: newSch.zoneId,
+                    nodeId,                      // single node per inspection
+                    nodes: [nodeId],             // kept for backward compat display
+                    techs: '', odt: '', reason: '',
+                    status: 'PENDIENTE',
+                    createdAt: sTs(),
+                    isRecurring: newSch.recurring,
+                    groupId,
+                    repeatDays: newSch.recurring ? Number(newSch.repeatDays) : null
+                });
+            });
+
             if(!newSch.recurring) break;
             nd.setUTCDate(nd.getUTCDate()+Number(newSch.repeatDays));
         }
@@ -599,7 +626,8 @@ const App = () => {
             const fd0=new Date(saved[0]+'T00:00:00Z');
             setCurMonth(new Date(fd0.getFullYear(),fd0.getMonth(),1));
             setActiveTab('cronograma');
-            alert(`GUARDADO · ${saved.length} FECHA(S) GENERADAS`);
+            const totalDocs = saved.length * newSch.selectedNodes.length;
+            alert(`GUARDADO · ${saved.length} FECHA(S) · ${totalDocs} INSPECCIÓN(ES) CREADAS`);
         } catch(e){console.error(e);alert("ERROR: "+e.message);}
     };
 
@@ -676,8 +704,11 @@ const App = () => {
         docPdf.text(`Generado: ${new Date().toLocaleDateString('es-VE')}`, 14, 28);
         docPdf.autoTable({
             startY:34,
-            head:[['FECHA','ODT','ZONA','NODOS','TÉCNICOS']],
-            body:done.map(s=>[formatDate(s.date),s.odt||'—',getZoneName(s.zoneId),s.nodes.map(n=>getNodeName(n)).join(', '),s.techs||'NO REG.']),
+            head:[['FECHA','ODT','ZONA','NODO','TÉCNICOS']],
+            body:done.map(s=>{
+                const nid = s.nodeId || (s.nodes&&s.nodes[0]);
+                return [formatDate(s.date),s.odt||'—',getZoneName(s.zoneId),getNodeName(nid),s.techs||'NO REG.'];
+            }),
             headStyles:{fillColor:[13,148,136]},
             styles:{fontSize:7,cellPadding:3},
             alternateRowStyles:{fillColor:[248,250,252]}
@@ -747,9 +778,6 @@ const App = () => {
                         const isSelected = selDate===ds;
                         const isToday    = TODAY_STR===ds;
                         const hasOverdue = ds_scheds.some(s=>s.status==='PENDIENTE'&&ds<TODAY_STR);
-                        const totalNodes = ds_scheds.reduce((acc,s)=>acc+(s.nodes?.length||0),0);
-                        const capPct     = Math.min(100,(totalNodes/5)*100);
-                        const capCls     = capPct===0?'cap-0':capPct<=40?'cap-low':capPct<=80?'cap-mid':'cap-max';
 
                         return (
                             <div
@@ -774,11 +802,6 @@ const App = () => {
                                         );
                                     })}
                                 </div>
-                                {totalNodes > 0 && (
-                                    <div className="cap-bar">
-                                        <div className={`cap-fill ${capCls}`} style={{width:`${capPct}%`}} />
-                                    </div>
-                                )}
                             </div>
                         );
                     })}
@@ -813,7 +836,7 @@ const App = () => {
         if(!tooltip.visible) return null;
         const ds_scheds = byDate[tooltip.date]||[];
         if(!ds_scheds.length) return null;
-        const totalNodes = ds_scheds.reduce((acc,s)=>acc+(s.nodes?.length||0),0);
+        const totalInsp = ds_scheds.length;
 
         return (
             <div
@@ -827,25 +850,31 @@ const App = () => {
                     const scls   = ttStatusClass(s.status, isPast);
                     const hex    = getZoneHex(s.zoneId);
                     const stLbl  = s.status==='COMPLETADO'?'✓ COMPLETADO':s.status==='EN EJECUCION'?'● EN EJECUCIÓN':s.status==='EN PAUSA'?'⏸ EN PAUSA':s.status==='ANULADA'?'✕ ANULADA':isPast?'⚠ VENCIDA':'○ PENDIENTE';
+                    // nodeId is single (new model) or first of array (legacy)
+                    const nodeId = s.nodeId || (s.nodes && s.nodes[0]);
                     return (
                         <div key={s.id} className="tt-row">
-                            <div className="tt-dot" style={{background:hex,marginTop:4}} />
-                            <div style={{flex:1}}>
-                                <div style={{fontSize:'.6rem',fontWeight:800,color:'rgba(255,255,255,.7)',marginBottom:3,letterSpacing:'.06em'}}>{getZoneName(s.zoneId)}</div>
-                                <div style={{display:'flex',flexWrap:'wrap',gap:'3px',marginBottom:4}}>
-                                    {s.nodes.map(nId=>(
-                                        <span key={nId} style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'.6rem',fontWeight:600,background:'rgba(255,255,255,.08)',padding:'2px 7px',borderRadius:5,color:'#e2e8f0'}}>{getNodeName(nId)}</span>
-                                    ))}
+                            <div className="tt-dot" style={{background:hex,marginTop:5,flexShrink:0}} />
+                            <div style={{flex:1,minWidth:0}}>
+                                {/* Node name — prominent */}
+                                <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'.68rem',fontWeight:700,color:'#f1f5f9',marginBottom:3,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                                    {getNodeName(nodeId)}
                                 </div>
-                                <span className={`tt-status ${scls}`}>{stLbl}</span>
-                                {delay>0 && <span className="tt-delay">{delay} DÍA{delay!==1?'S':''} DE RETRASO</span>}
-                                {s.odt && <span style={{fontSize:'.55rem',fontWeight:800,color:'#c4b5fd',background:'rgba(168,85,247,.15)',padding:'2px 7px',borderRadius:5,marginTop:3,display:'inline-block'}}>ODT: {s.odt}</span>}
+                                {/* Zone */}
+                                <div style={{fontSize:'.57rem',fontWeight:700,color:'rgba(255,255,255,.45)',marginBottom:4,letterSpacing:'.06em'}}>{getZoneName(s.zoneId)}</div>
+                                {/* Status */}
+                                <div style={{display:'flex',flexWrap:'wrap',gap:4,alignItems:'center'}}>
+                                    <span className={`tt-status ${scls}`}>{stLbl}</span>
+                                    {delay>0 && <span className="tt-delay">{delay}D RETRASO</span>}
+                                    {s.odt && <span style={{fontSize:'.54rem',fontWeight:800,color:'#c4b5fd',background:'rgba(168,85,247,.15)',padding:'2px 6px',borderRadius:4}}>ODT:{s.odt}</span>}
+                                    {s.techs && <span style={{fontSize:'.54rem',fontWeight:700,color:'rgba(255,255,255,.35)',padding:'2px 0'}}>{s.techs}</span>}
+                                </div>
                             </div>
                         </div>
                     );
                 })}
                 <div className="tt-cap">
-                    {totalNodes}/5 NODOS AGENDADOS · {5-totalNodes} DISPONIBLE{5-totalNodes!==1?'S':''}
+                    {totalInsp}/5 INSPECCIONES · {5-totalInsp} SLOT{5-totalInsp!==1?'S':''} LIBRE{5-totalInsp!==1?'S':''}
                 </div>
             </div>
         );
@@ -885,11 +914,14 @@ const App = () => {
                     {sch.isRecurring && <span className="badge b-recurring"><RepeatIco /> CADA {sch.repeatDays}D</span>}
                 </div>
 
-                {/* Row 2: nodes */}
+                {/* Row 2: node (single per inspection) */}
                 <div className={`node-box${isCancelled?' opacity-50':''}`} style={{marginBottom:10}}>
-                    <div className="node-box-lbl">NODOS A INTERVENIR</div>
+                    <div className="node-box-lbl">NODO A INTERVENIR</div>
                     <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
-                        {sch.nodes.map(nId=><span key={nId} className="node-tag">{getNodeName(nId)}</span>)}
+                        {(() => {
+                            const nid = sch.nodeId || (sch.nodes && sch.nodes[0]);
+                            return nid ? <span className="node-tag">{getNodeName(nid)}</span> : null;
+                        })()}
                     </div>
                 </div>
 
@@ -1146,10 +1178,10 @@ const App = () => {
                                     </div>
                                 ) : (
                                     <div style={{display:'flex',flexDirection:'column',gap:10}}>
-                                        {/* Day summary chip */}
+                                        {/* Day summary */}
                                         <div style={{display:'flex',gap:8,flexWrap:'wrap',paddingLeft:2}}>
                                             <span style={{fontSize:'.6rem',fontWeight:800,letterSpacing:'.1em',color:'var(--muted)'}}>
-                                                {daySchedules.length} INSPECC. · {daySchedules.reduce((acc,s)=>acc+(s.nodes?.length||0),0)}/5 NODOS
+                                                {daySchedules.length}/5 INSPECCIONES AGENDADAS
                                             </span>
                                         </div>
                                         {daySchedules.map(sch=><SchCard key={sch.id} sch={sch} />)}
@@ -1227,15 +1259,54 @@ const App = () => {
                     )}
 
                     {/* ────── HISTORIAL ────── */}
-                    {activeTab==='historial' && (
+                    {activeTab==='historial' && (() => {
+                        const completed = schedules.filter(s=>s.status==='COMPLETADO');
+                        const filtered  = completed.filter(s => {
+                            const nid = s.nodeId || (s.nodes&&s.nodes[0]);
+                            if(histFilterZone && s.zoneId !== histFilterZone) return false;
+                            if(histFilterNode && nid !== histFilterNode) return false;
+                            if(histFilterTech && !(s.techs||'').toUpperCase().includes(histFilterTech.toUpperCase())) return false;
+                            return true;
+                        }).sort((a,b)=>new Date(b.date)-new Date(a.date));
+
+                        return (
                         <>
+                            {/* Header */}
                             <div className="card" style={{padding:'18px 22px',display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap'}}>
                                 <div>
                                     <div style={{fontSize:'.75rem',fontWeight:900,letterSpacing:'.06em'}}>HISTORIAL DE EJECUCIÓN</div>
-                                    <div style={{fontSize:'.6rem',fontWeight:700,color:'var(--muted)',marginTop:3,letterSpacing:'.1em'}}>{schedules.filter(s=>s.status==='COMPLETADO').length} MANTENIMIENTOS COMPLETADOS</div>
+                                    <div style={{fontSize:'.6rem',fontWeight:700,color:'var(--muted)',marginTop:3,letterSpacing:'.1em'}}>
+                                        {filtered.length} DE {completed.length} MANTENIMIENTOS
+                                    </div>
                                 </div>
                                 <button onClick={exportPDF} className="btn btn-dark" style={{gap:7}}><PdfIco /> EXPORTAR PDF</button>
                             </div>
+
+                            {/* Filters */}
+                            <div className="filter-bar" style={{flexWrap:'wrap',gap:8}}>
+                                <span className="filter-lbl">FILTRAR:</span>
+                                <select className="filter-select" value={histFilterZone} onChange={e=>{setHistFilterZone(e.target.value);setHistFilterNode('');}}>
+                                    <option value="">TODAS LAS ZONAS</option>
+                                    {zones.map(z=><option key={z.id} value={z.id}>{z.name}</option>)}
+                                </select>
+                                <select className="filter-select" value={histFilterNode} onChange={e=>setHistFilterNode(e.target.value)}>
+                                    <option value="">TODOS LOS NODOS</option>
+                                    {(histFilterZone ? nodes.filter(n=>n.zoneId===histFilterZone) : nodes)
+                                        .map(n=><option key={n.id} value={n.id}>{n.name}</option>)}
+                                </select>
+                                <input
+                                    className="filter-select"
+                                    style={{minWidth:140}}
+                                    placeholder="TÉCNICO..."
+                                    value={histFilterTech}
+                                    onChange={e=>setHistFilterTech(e.target.value)}
+                                />
+                                {(histFilterZone||histFilterNode||histFilterTech) && (
+                                    <button className="filter-clear" onClick={()=>{setHistFilterZone('');setHistFilterNode('');setHistFilterTech('');}}>✕ LIMPIAR</button>
+                                )}
+                            </div>
+
+                            {/* Table */}
                             <div className="card" style={{overflow:'hidden'}}>
                                 <div style={{overflowX:'auto'}}>
                                     <table className="hist-tbl">
@@ -1244,30 +1315,36 @@ const App = () => {
                                                 <th>FECHA</th>
                                                 <th>ODT</th>
                                                 <th>ZONA</th>
-                                                <th>NODOS</th>
+                                                <th>NODO</th>
                                                 <th>TÉCNICOS</th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {schedules.filter(s=>s.status==='COMPLETADO').length===0 ? (
-                                                <tr><td colSpan="5" style={{textAlign:'center',padding:40,color:'var(--muted)',fontSize:'.63rem',fontWeight:800,letterSpacing:'.12em'}}>AÚN NO HAY MANTENIMIENTOS FINALIZADOS</td></tr>
+                                            {filtered.length===0 ? (
+                                                <tr><td colSpan="5" style={{textAlign:'center',padding:40,color:'var(--muted)',fontSize:'.63rem',fontWeight:800,letterSpacing:'.12em'}}>
+                                                    {completed.length===0 ? 'AÚN NO HAY MANTENIMIENTOS FINALIZADOS' : 'SIN RESULTADOS CON ESTOS FILTROS'}
+                                                </td></tr>
                                             ) : (
-                                                schedules.filter(s=>s.status==='COMPLETADO').sort((a,b)=>new Date(b.date)-new Date(a.date)).map(s=>(
+                                                filtered.map(s => {
+                                                    const nid = s.nodeId || (s.nodes&&s.nodes[0]);
+                                                    return (
                                                     <tr key={s.id}>
                                                         <td style={{whiteSpace:'nowrap',fontFamily:"'JetBrains Mono',monospace",fontSize:'.62rem'}}>{formatDate(s.date)}</td>
                                                         <td>{s.odt ? <span className="badge b-odt">{s.odt}</span> : <span style={{color:'var(--muted)'}}>—</span>}</td>
                                                         <td><div className="zone-chip"><span className={`zdot ${getZoneColor(s.zoneId)}`} />{getZoneName(s.zoneId)}</div></td>
-                                                        <td><div style={{display:'flex',flexWrap:'wrap',gap:4}}>{s.nodes.map(n=><span key={n} className="node-tag">{getNodeName(n)}</span>)}</div></td>
+                                                        <td><span className="node-tag">{getNodeName(nid)}</span></td>
                                                         <td style={{color:'var(--primary)',fontWeight:800}}>{s.techs||'NO REGISTRADO'}</td>
                                                     </tr>
-                                                ))
+                                                    );
+                                                })
                                             )}
                                         </tbody>
                                     </table>
                                 </div>
                             </div>
                         </>
-                    )}
+                        );
+                    })()}
 
                     {/* ────── MAESTRO ────── */}
                     {activeTab==='maestro' && (
@@ -1385,3 +1462,4 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 </script>
 </body>
 </html>
+
