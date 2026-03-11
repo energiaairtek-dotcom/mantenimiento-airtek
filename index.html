@@ -3,1169 +3,1385 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Airtek - Mantenimiento Preventivo Zulia</title>
-    
-    <!-- Tailwind CSS -->
+    <title>Airtek · PM Zulia</title>
+
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- React & ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- Babel -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- jsPDF & AutoTable para Exportar a PDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
-    
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,400&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
-        
-        body { 
-            font-family: 'Inter', sans-serif; 
-            letter-spacing: -0.01em;
+        :root {
+            --bg:        #eef1f6;
+            --surface:   #ffffff;
+            --border:    #dde3ed;
+            --primary:   #0d9488;
+            --primary-d: #0f766e;
+            --primary-l: #ccfbf1;
+            --accent:    #06b6d4;
+            --danger:    #ef4444;
+            --warn:      #f59e0b;
+            --info:      #3b82f6;
+            --dark:      #0d1b2a;
+            --dark2:     #162032;
+            --text:      #0d1b2a;
+            --muted:     #64748b;
+            --sh:        0 2px 12px rgba(13,26,42,.07), 0 1px 3px rgba(13,26,42,.05);
+            --sh-h:      0 8px 32px rgba(13,148,136,.14), 0 2px 8px rgba(13,26,42,.07);
+            --sh-pop:    0 20px 60px rgba(13,26,42,.18), 0 4px 16px rgba(13,26,42,.1);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Exo 2', sans-serif;
+            background: var(--bg);
+            background-image: radial-gradient(ellipse 90% 50% at 50% -5%, rgba(13,148,136,.07) 0%, transparent 55%);
+            color: var(--text);
             text-transform: uppercase;
-        }
-        
-        .shadow-premium {
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.02);
+            min-height: 100vh;
         }
 
-        .tab-content {
-            animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        /* ── HEADER ── */
+        .app-header {
+            background: linear-gradient(135deg, var(--dark) 0%, var(--dark2) 100%);
+            border-bottom: 1px solid rgba(13,148,136,.3);
+            box-shadow: 0 4px 28px rgba(13,26,42,.35);
+            position: sticky; top: 0; z-index: 60;
         }
+        .logo-ring {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+            border-radius: 14px; padding: 10px; color: #fff;
+            box-shadow: 0 4px 16px rgba(13,148,136,.4);
+        }
+        .header-title { font-size: 1.2rem; font-weight: 900; letter-spacing: -.02em; color: #fff; }
+        .header-badge { font-size: .58rem; font-weight: 800; background: rgba(13,148,136,.2); color: #5eead4; border: 1px solid rgba(13,148,136,.3); padding: 2px 8px; border-radius: 999px; letter-spacing: .12em; }
+        .status-dot { width: 7px; height: 7px; border-radius: 50%; }
+        .online  { background: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,.2); animation: pulse-g 2s infinite; }
+        .offline { background: #ef4444; }
+        .status-lbl { font-size: .6rem; font-weight: 700; letter-spacing: .12em; }
+        .online-lbl  { color: #86efac; }
+        .offline-lbl { color: #fca5a5; }
+        .mode-btn {
+            font-size: .6rem; font-weight: 800; letter-spacing: .1em; padding: 6px 14px;
+            border-radius: 999px; border: none; cursor: pointer; transition: all .2s;
+        }
+        .mode-active   { background: linear-gradient(135deg,var(--primary),var(--accent)); color:#fff; box-shadow: 0 2px 12px rgba(13,148,136,.35); }
+        .mode-inactive { background: rgba(255,255,255,.08); color: rgba(255,255,255,.4); border: 1px solid rgba(255,255,255,.1); }
 
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(8px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
+        /* ── STATS BAR ── */
+        .stats-bar { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; }
+        .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 12px 10px; text-align: center; box-shadow: var(--sh); transition: all .2s; cursor: default; }
+        .stat-card:hover { transform: translateY(-2px); box-shadow: var(--sh-h); }
+        .stat-num { font-size: 1.3rem; font-weight: 900; line-height: 1; }
+        .stat-lbl { font-size: .55rem; font-weight: 800; letter-spacing: .12em; color: var(--muted); margin-top: 3px; }
+        .stat-pending   .stat-num { color: #f97316; }
+        .stat-executing .stat-num { color: var(--info); }
+        .stat-overdue   .stat-num { color: var(--danger); }
+        .stat-done      .stat-num { color: var(--primary); }
 
-        .no-scrollbar::-webkit-scrollbar {
-            display: none;
-        }
+        /* ── FILTER BAR ── */
+        .filter-bar { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 10px 14px; box-shadow: var(--sh); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        .filter-select { font-family: 'Exo 2',sans-serif; font-size: .62rem; font-weight: 700; text-transform: uppercase; background: #f8fafc; border: 1.5px solid var(--border); border-radius: 10px; padding: 7px 12px; outline: none; color: var(--text); cursor: pointer; transition: border-color .18s; appearance: none; }
+        .filter-select:focus { border-color: var(--primary); }
+        .filter-lbl { font-size: .58rem; font-weight: 800; letter-spacing: .1em; color: var(--muted); }
+        .filter-clear { font-size: .58rem; font-weight: 800; letter-spacing: .1em; padding: 7px 12px; background: #fef2f2; color: #dc2626; border: 1.5px solid #fecaca; border-radius: 10px; cursor: pointer; transition: all .18s; }
+        .filter-clear:hover { background: #fee2e2; }
+        .today-btn { font-size: .58rem; font-weight: 800; letter-spacing: .1em; padding: 7px 14px; background: linear-gradient(135deg,var(--primary),var(--primary-d)); color: #fff; border: none; border-radius: 10px; cursor: pointer; box-shadow: 0 2px 8px rgba(13,148,136,.3); transition: all .18s; }
+        .today-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(13,148,136,.4); }
 
-        .pulse-online {
-            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-        }
+        /* ── TABS ── */
+        .tab-nav { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 5px; display: flex; gap: 4px; box-shadow: var(--sh); overflow-x: auto; }
+        .tab-nav::-webkit-scrollbar { display: none; }
+        .tab-btn { flex:1; min-width:90px; padding:11px 8px; border-radius:13px; border:none; cursor:pointer; font-family:'Exo 2',sans-serif; font-size:.6rem; font-weight:800; letter-spacing:.1em; white-space:nowrap; transition:all .2s; text-transform:uppercase; }
+        .tab-active   { background:linear-gradient(135deg,var(--primary),var(--primary-d)); color:#fff; box-shadow:0 4px 16px rgba(13,148,136,.3); }
+        .tab-inactive { background:transparent; color:var(--muted); }
+        .tab-inactive:hover { background:#f0fdf9; color:var(--primary); }
 
-        .pulse-executing {
-            animation: pulse-border 2s infinite;
-        }
+        /* ── CARD ── */
+        .card { background:var(--surface); border:1px solid var(--border); border-radius:24px; box-shadow:var(--sh); }
+        .card-xl { border-radius:28px; }
+        .card:hover { box-shadow:var(--sh-h); }
 
-        @keyframes pulse-border {
-            0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
-            70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+        /* ── CALENDAR ── */
+        .cal-hdr { font-size:.68rem; font-weight:900; letter-spacing:.15em; color:var(--text); }
+        .cal-day-lbl { font-size:.58rem; font-weight:800; letter-spacing:.1em; color:var(--muted); text-align:center; padding:4px 0; }
+        .cal-cell {
+            min-height:72px; padding:7px 5px 5px; border-radius:14px;
+            border:2px solid transparent; cursor:pointer;
+            transition:all .18s cubic-bezier(.4,0,.2,1);
+            display:flex; flex-direction:column; align-items:center;
+            background:#f8fafc; position:relative;
         }
+        .cal-cell:hover  { border-color:#99f6e4; background:#f0fdf9; transform:translateY(-1px); }
+        .cal-cell.cal-active { border-color:var(--primary); background:linear-gradient(135deg,#f0fdf9,#e0f7f4); box-shadow:0 4px 18px rgba(13,148,136,.18); transform:scale(1.04); z-index:2; }
+        .cal-num { font-size:.7rem; font-weight:900; width:26px; height:26px; display:flex; align-items:center; justify-content:center; border-radius:50%; margin-bottom:3px; flex-shrink:0; }
+        .cal-num-today    { background:linear-gradient(135deg,var(--primary),var(--accent)); color:#fff; box-shadow:0 2px 8px rgba(13,148,136,.4); }
+        .cal-num-selected { color:var(--primary-d); font-weight:900; }
+        .cal-num-normal   { color:#475569; }
+        .cal-dots { display:flex; flex-wrap:wrap; gap:3px; justify-content:center; margin-top:auto; }
+        .cal-dot  { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
 
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: .4; }
-        }
+        /* Day capacity bar */
+        .cap-bar { width:100%; height:3px; background:#e2e8f0; border-radius:2px; margin-top:3px; overflow:hidden; }
+        .cap-fill { height:100%; border-radius:2px; transition:width .3s; }
+        .cap-0   { background:#e2e8f0; }
+        .cap-low { background:linear-gradient(90deg,var(--primary),var(--accent)); }
+        .cap-mid { background:linear-gradient(90deg,#f59e0b,#f97316); }
+        .cap-max { background:linear-gradient(90deg,#ef4444,#dc2626); }
 
-        input, select, textarea, option {
-            text-transform: uppercase !important;
-        }
-        
-        .custom-checkbox {
-            appearance: none;
-            background-color: #f8fafc;
-            margin: 0;
-            font: inherit;
-            color: currentColor;
-            width: 1.5em;
-            height: 1.5em;
-            border: 2px solid #cbd5e1;
-            border-radius: 0.35em;
-            display: grid;
-            place-content: center;
-            transition: all 0.2s ease-in-out;
-            cursor: pointer;
-        }
+        /* Overdue badge on cell */
+        .cell-overdue-dot { position:absolute; top:4px; right:4px; width:7px; height:7px; background:#ef4444; border-radius:50%; box-shadow:0 0 0 2px rgba(239,68,68,.25); animation:pulse-r 2s infinite; }
 
-        .custom-checkbox::before {
-            content: "";
-            width: 0.8em;
-            height: 0.8em;
-            transform: scale(0);
-            transition: 120ms transform ease-in-out;
-            box-shadow: inset 1em 1em white;
-            transform-origin: center;
-            clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+        /* ── HOVER TOOLTIP ── */
+        .day-tooltip {
+            position:fixed; z-index:200; pointer-events:none;
+            background:var(--dark); color:#fff;
+            border:1px solid rgba(255,255,255,.12);
+            border-radius:16px; padding:14px 16px;
+            min-width:220px; max-width:300px;
+            box-shadow:var(--sh-pop);
+            animation:tooltipIn .15s cubic-bezier(.16,1,.3,1);
         }
+        @keyframes tooltipIn { from{opacity:0;transform:scale(.95) translateY(4px)} to{opacity:1;transform:scale(1) translateY(0)} }
+        .tt-date { font-size:.58rem; font-weight:800; letter-spacing:.15em; color:rgba(255,255,255,.4); margin-bottom:8px; }
+        .tt-row { display:flex; align-items:flex-start; gap:8px; padding:6px 0; border-top:1px solid rgba(255,255,255,.07); }
+        .tt-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; margin-top:3px; }
+        .tt-node { font-size:.65rem; font-weight:700; color:#e2e8f0; line-height:1.4; }
+        .tt-status { font-size:.55rem; font-weight:800; letter-spacing:.08em; }
+        .tt-delay { font-size:.55rem; font-weight:800; color:#fca5a5; background:rgba(239,68,68,.2); padding:2px 7px; border-radius:999px; margin-top:3px; display:inline-block; }
+        .tt-cap { font-size:.58rem; font-weight:700; color:rgba(255,255,255,.4); margin-top:8px; padding-top:7px; border-top:1px solid rgba(255,255,255,.07); }
 
-        .custom-checkbox:checked {
-            background-color: #0d9488;
-            border-color: #0d9488;
-        }
+        /* Status colors in tooltip */
+        .tt-pending   { color:#fdba74; }
+        .tt-executing { color:#93c5fd; }
+        .tt-paused    { color:#fcd34d; }
+        .tt-completed { color:#6ee7b7; }
+        .tt-cancelled { color:#fca5a5; }
+        .tt-overdue   { color:#f87171; }
 
-        .custom-checkbox:checked::before {
-            transform: scale(1);
+        /* ── SCHEDULE CARDS ── */
+        .sch-card {
+            background:var(--surface); border:1px solid var(--border); border-left-width:4px;
+            border-radius:20px; padding:18px 20px; transition:all .2s; box-shadow:var(--sh);
         }
+        .sch-card:hover { box-shadow:var(--sh-h); transform:translateY(-1px); }
+        .s-executing { border-left-color:var(--info); animation:bpulse 2.5s infinite; }
+        .s-completed { border-left-color:var(--primary); opacity:.85; }
+        .s-paused    { border-left-color:var(--warn); }
+        .s-cancelled { border-left-color:var(--danger); opacity:.75; }
+        .s-pending   { border-left-color:#f97316; }
+        .s-overdue   { border-left-color:#dc2626; }
+        @keyframes bpulse { 0%,100%{box-shadow:var(--sh)} 50%{box-shadow:0 0 0 4px rgba(59,130,246,.12),var(--sh)} }
 
-        .custom-checkbox:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            background-color: #e2e8f0;
+        /* ── BADGES ── */
+        .badge { font-size:.57rem; font-weight:800; letter-spacing:.1em; padding:3px 10px; border-radius:999px; display:inline-flex; align-items:center; gap:5px; }
+        .b-pending   { background:#fff7ed; color:#c2410c; border:1px solid #fed7aa; }
+        .b-executing { background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }
+        .b-paused    { background:#fffbeb; color:#92400e; border:1px solid #fde68a; }
+        .b-completed { background:#f0fdf9; color:#065f46; border:1px solid #a7f3d0; }
+        .b-cancelled { background:#fef2f2; color:#991b1b; border:1px solid #fecaca; }
+        .b-overdue   { background:#fef2f2; color:#991b1b; border:1px solid #fecaca; }
+        .b-delay     { background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; font-size:.57rem; font-weight:900; }
+        .b-recurring { background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe; }
+        .b-odt       { background:#faf5ff; color:#6b21a8; border:1px solid #e9d5ff; font-family:'JetBrains Mono',monospace; }
+
+        /* ── ZONE CHIP ── */
+        .zone-chip { display:inline-flex; align-items:center; gap:7px; background:#f8fafc; border:1px solid var(--border); padding:4px 10px; border-radius:8px; font-size:.62rem; font-weight:800; letter-spacing:.08em; color:#334155; }
+        .zdot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+
+        /* ── NODE TAGS ── */
+        .node-tag { font-family:'JetBrains Mono',monospace; font-size:.62rem; font-weight:600; background:#f8fafc; border:1px solid var(--border); padding:4px 10px; border-radius:7px; color:#334155; }
+        .node-box { background:linear-gradient(135deg,#f8fafc,#f0f7ff); border:1px solid var(--border); border-radius:14px; padding:13px; }
+        .node-box-lbl { font-size:.56rem; font-weight:800; letter-spacing:.15em; color:var(--primary); margin-bottom:7px; }
+
+        /* ── BUTTONS ── */
+        .btn { font-family:'Exo 2',sans-serif; text-transform:uppercase; font-size:.62rem; font-weight:800; letter-spacing:.1em; padding:9px 16px; border-radius:10px; border:none; cursor:pointer; transition:all .18s; white-space:nowrap; display:inline-flex; align-items:center; justify-content:center; gap:5px; }
+        .btn-start    { background:linear-gradient(135deg,var(--primary),var(--primary-d)); color:#fff; box-shadow:0 3px 12px rgba(13,148,136,.3); }
+        .btn-start:hover { transform:translateY(-1px); box-shadow:0 6px 20px rgba(13,148,136,.4); }
+        .btn-complete { background:linear-gradient(135deg,var(--info),#2563eb); color:#fff; box-shadow:0 3px 12px rgba(59,130,246,.3); }
+        .btn-complete:hover { transform:translateY(-1px); box-shadow:0 6px 20px rgba(59,130,246,.4); }
+        .btn-pause  { background:#fffbeb; color:#92400e; border:1px solid #fde68a; }
+        .btn-pause:hover { background:#fef3c7; }
+        .btn-cancel { background:#fef2f2; color:#991b1b; border:1px solid #fecaca; }
+        .btn-cancel:hover { background:#fee2e2; }
+        .btn-reopen { background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; }
+        .btn-reopen:hover { background:#e2e8f0; }
+        .btn-delete { background:#fef2f2; color:#dc2626; border:1px solid #fecaca; padding:9px; }
+        .btn-delete:hover { background:#fee2e2; }
+        .btn-edit   { background:#faf5ff; color:#6b21a8; border:1px solid #e9d5ff; }
+        .btn-edit:hover { background:#f3e8ff; }
+        .btn-resume { background:linear-gradient(135deg,var(--primary),var(--accent)); color:#fff; box-shadow:0 3px 12px rgba(13,148,136,.3); }
+        .btn-dark   { background:linear-gradient(135deg,var(--dark),var(--dark2)); color:#fff; box-shadow:0 4px 16px rgba(13,26,42,.3); }
+        .btn-dark:hover { box-shadow:0 6px 20px rgba(13,26,42,.4); transform:translateY(-1px); }
+        .btn-full   { background:linear-gradient(135deg,var(--primary),var(--primary-d)); color:#fff; padding:17px; border-radius:16px; width:100%; font-size:.7rem; letter-spacing:.15em; box-shadow:0 6px 24px rgba(13,148,136,.35); }
+        .btn-full:hover { box-shadow:0 10px 36px rgba(13,148,136,.45); transform:translateY(-2px); }
+
+        /* ── FORMS ── */
+        .form-group { display:flex; flex-direction:column; gap:5px; }
+        .form-lbl { font-size:.59rem; font-weight:800; letter-spacing:.15em; color:var(--muted); padding-left:3px; }
+        .form-inp, .form-sel {
+            font-family:'Exo 2',sans-serif; text-transform:uppercase; font-size:.72rem; font-weight:700;
+            width:100%; padding:13px 15px; background:#f8fafc; border:2px solid var(--border);
+            border-radius:13px; outline:none; color:var(--text); transition:all .18s; appearance:none;
         }
+        .form-inp:focus,.form-sel:focus { border-color:var(--primary); background:#fff; box-shadow:0 0 0 4px rgba(13,148,136,.1); }
+
+        /* Custom checkbox */
+        .chk { appearance:none; background:#f8fafc; width:20px; height:20px; border:2px solid #cbd5e1; border-radius:6px; display:grid; place-content:center; transition:all .2s; cursor:pointer; flex-shrink:0; }
+        .chk::before { content:""; width:.7em; height:.7em; transform:scale(0); transition:120ms transform ease-in-out; box-shadow:inset 1em 1em white; clip-path:polygon(14% 44%,0 65%,50% 100%,100% 16%,80% 0%,43% 62%); }
+        .chk:checked { background:var(--primary); border-color:var(--primary); }
+        .chk:checked::before { transform:scale(1); }
+        .chk:disabled { opacity:.4; cursor:not-allowed; }
+
+        /* ── ACTION/EDIT PROMPT ── */
+        .prompt-box { background:linear-gradient(135deg,#f8fafc,#f0fdf9); border:1px solid var(--border); border-radius:16px; padding:16px; animation:slideD .2s cubic-bezier(.16,1,.3,1); }
+        .prompt-box.edit-mode { background:linear-gradient(135deg,#faf5ff,#f3e8ff); border-color:#e9d5ff; }
+        @keyframes slideD { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
+        .prompt-lbl { font-size:.58rem; font-weight:800; letter-spacing:.15em; margin-bottom:10px; }
+        .prompt-inp { font-family:'Exo 2',sans-serif; text-transform:uppercase; font-size:.72rem; font-weight:700; flex:1; padding:11px 13px; background:#fff; border:2px solid var(--border); border-radius:11px; outline:none; color:var(--text); transition:border-color .18s; }
+        .prompt-inp:focus { border-color:var(--primary); }
+        .prompt-inp.odt { border-color:#e9d5ff; }
+        .prompt-inp.odt:focus { border-color:#a855f7; box-shadow:0 0 0 3px rgba(168,85,247,.1); }
+
+        /* Reason/tech chips */
+        .reason-box { font-size:.62rem; font-weight:700; padding:8px 12px; border-radius:10px; }
+        .reason-cancelled { background:#fef2f2; color:#991b1b; border:1px solid #fecaca; }
+        .reason-paused    { background:#fffbeb; color:#92400e; border:1px solid #fde68a; }
+        .tech-chip { display:inline-flex; align-items:center; gap:6px; background:#f0fdf9; border:1px solid #a7f3d0; padding:5px 12px; border-radius:8px; font-size:.62rem; font-weight:800; color:#065f46; }
+
+        /* ── SECTION TITLE ── */
+        .sec-title { font-size:.6rem; font-weight:900; letter-spacing:.2em; color:var(--muted); padding-left:10px; border-left:3px solid var(--primary); }
+
+        /* ── HISTORY TABLE ── */
+        .hist-tbl { width:100%; border-collapse:collapse; }
+        .hist-tbl th { font-size:.57rem; font-weight:900; letter-spacing:.15em; color:var(--muted); padding:13px 15px; background:#f8fafc; border-bottom:1px solid var(--border); text-align:left; }
+        .hist-tbl td { padding:13px 15px; border-bottom:1px solid #f1f5f9; font-size:.7rem; font-weight:700; vertical-align:middle; }
+        .hist-tbl tr:last-child td { border-bottom:none; }
+        .hist-tbl tr:hover td { background:#f8fafc; }
+
+        /* ── ZONE ADMIN ── */
+        .zone-card { background:var(--surface); border:1px solid var(--border); border-radius:18px; padding:17px; box-shadow:var(--sh); transition:all .2s; }
+        .zone-card:hover { box-shadow:var(--sh-h); }
+        .node-item { display:flex; align-items:center; justify-content:space-between; padding:9px 13px; background:#f8fafc; border-radius:10px; border:1px solid transparent; transition:all .18s; }
+        .node-item:hover { background:#f0fdf9; border-color:#a7f3d0; }
+        .node-name { font-family:'JetBrains Mono',monospace; font-size:.65rem; font-weight:600; color:#334155; }
+        .sub-tab { background:#f1f5f9; padding:4px; border-radius:14px; display:flex; gap:4px; }
+        .sub-btn { flex:1; padding:10px; border-radius:10px; border:none; cursor:pointer; font-family:'Exo 2',sans-serif; font-size:.6rem; font-weight:800; letter-spacing:.1em; text-transform:uppercase; transition:all .2s; }
+        .sub-active   { background:#fff; color:var(--text); box-shadow:0 1px 6px rgba(13,26,42,.1); }
+        .sub-inactive { background:transparent; color:var(--muted); }
+        .color-sw { width:28px; height:28px; border-radius:50%; cursor:pointer; border:2px solid transparent; transition:all .18s; }
+        .color-sw.sel { border-color:var(--dark); box-shadow:0 0 0 3px rgba(13,26,42,.12); transform:scale(1.15); }
+        .color-sw:hover:not(.sel) { transform:scale(1.1); }
+
+        /* ── DELETE OVERLAY ── */
+        .del-overlay { position:absolute; inset:0; background:rgba(255,255,255,.92); backdrop-filter:blur(8px); z-index:20; border-radius:28px; display:flex; align-items:center; justify-content:center; padding:24px; animation:fadeIn .2s; }
+        .del-modal { background:#fff; border:2px solid #fecaca; border-radius:24px; padding:26px; max-width:300px; width:100%; text-align:center; box-shadow:0 20px 60px rgba(220,38,38,.12); }
+
+        /* ── LOADING ── */
+        .loading-screen { position:fixed; inset:0; background:var(--dark); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; z-index:100; }
+        .load-ring { width:60px; height:60px; border:3px solid rgba(13,148,136,.2); border-top-color:var(--primary); border-radius:50%; animation:spin 1s linear infinite; }
+        @keyframes spin { to{transform:rotate(360deg)} }
+
+        /* ── EMPTY STATE ── */
+        .empty { padding:40px 20px; text-align:center; }
+        .empty-ico { width:46px; height:46px; background:#f1f5f9; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 14px; }
+        .empty-txt { font-size:.63rem; font-weight:800; letter-spacing:.15em; color:var(--muted); }
+
+        /* ── MISC ── */
+        .tab-content { animation:fadeUp .3s cubic-bezier(.16,1,.3,1); }
+        @keyframes fadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes fadeIn  { from{opacity:0} to{opacity:1} }
+        @keyframes pulse-g { 0%,100%{box-shadow:0 0 0 0 rgba(34,197,94,.4)} 50%{box-shadow:0 0 0 6px rgba(34,197,94,0)} }
+        @keyframes pulse-r { 0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.4)} 50%{box-shadow:0 0 0 5px rgba(239,68,68,0)} }
+        .no-scroll::-webkit-scrollbar { display:none; }
+        .no-scroll { -ms-overflow-style:none; scrollbar-width:none; }
+        input[type="date"]::-webkit-calendar-picker-indicator { filter:opacity(.4); cursor:pointer; }
+        .recur-box { background:linear-gradient(135deg,#f0fdf9,#e0f7f4); border:1px solid #a7f3d0; border-radius:18px; padding:16px; }
+        .node-sel-box { background:#f8fafc; border:1px solid var(--border); border-radius:18px; padding:16px; }
+        .node-sel-lbl { background:var(--surface); border:1px solid var(--border); border-radius:13px; padding:11px 13px; cursor:pointer; display:flex; align-items:center; gap:9px; transition:all .18s; }
+        .node-sel-lbl:hover { border-color:#a7f3d0; background:#f0fdf9; }
+        .node-sel-lbl.nsl-sel { border-color:var(--primary); background:#f0fdf9; box-shadow:0 2px 8px rgba(13,148,136,.12); }
+        .node-sel-lbl.nsl-dis { opacity:.4; cursor:not-allowed; }
+        @media(max-width:640px){ .cal-cell{min-height:60px;padding:5px 3px 4px} .stats-bar{grid-template-columns:repeat(2,1fr)} }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-900">
-    <div id="root"></div>
+<body>
+<div id="root"></div>
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, updateDoc, deleteDoc, collection, query, onSnapshot, addDoc, serverTimestamp, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+<script type="module">
+    import { initializeApp }   from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, updateDoc, deleteDoc, collection, onSnapshot, addDoc, serverTimestamp, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        const myConfig = {
-            apiKey: "AIzaSyDwaK4Z26RfqDwNvwdMqri08oEjwG9qymc",
-            authDomain: "almacen-airtek.firebaseapp.com",
-            projectId: "almacen-airtek",
-            storageBucket: "almacen-airtek.firebasestorage.app",
-            messagingSenderId: "934058211778",
-            appId: "1:934058211778:web:6cc9d820c41fa90aa5fe5b"
+    const cfg = {
+        apiKey:"AIzaSyDwaK4Z26RfqDwNvwdMqri08oEjwG9qymc",
+        authDomain:"almacen-airtek.firebaseapp.com",
+        projectId:"almacen-airtek",
+        storageBucket:"almacen-airtek.firebasestorage.app",
+        messagingSenderId:"934058211778",
+        appId:"1:934058211778:web:6cc9d820c41fa90aa5fe5b"
+    };
+    window.__firebase_config_manual = JSON.stringify(cfg);
+    window.FirebaseSDK = { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, getFirestore, doc, setDoc, updateDoc, deleteDoc, collection, onSnapshot, addDoc, serverTimestamp, writeBatch };
+    window.dispatchEvent(new Event('firebase-ready'));
+</script>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useMemo, useCallback } = React;
+
+const ZONE_COLORS  = ['bg-red-500','bg-blue-500','bg-green-500','bg-yellow-400','bg-purple-500','bg-pink-500','bg-indigo-500','bg-orange-500','bg-teal-500','bg-cyan-500'];
+const MONTH_NAMES  = ["ENERO","FEBRERO","MARZO","ABRIL","MAYO","JUNIO","JULIO","AGOSTO","SEPTIEMBRE","OCTUBRE","NOVIEMBRE","DICIEMBRE"];
+const TODAY_STR    = new Date().toISOString().split('T')[0];
+
+// ── CSS class for zone color → actual hex (for tooltip dots) ──
+const COLOR_HEX = {
+    'bg-red-500':'#ef4444','bg-blue-500':'#3b82f6','bg-green-500':'#22c55e',
+    'bg-yellow-400':'#facc15','bg-purple-500':'#a855f7','bg-pink-500':'#ec4899',
+    'bg-indigo-500':'#6366f1','bg-orange-500':'#f97316','bg-teal-500':'#14b8a6','bg-cyan-500':'#06b6d4'
+};
+
+// ── Icons ──
+const ToolIco   = ({c="h-6 w-6"}) => <svg viewBox="0 0 24 24" fill="none" className={c}><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" fill="currentColor"/></svg>;
+const ChevL     = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>;
+const ChevR     = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>;
+const PdfIco    = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>;
+const TrashIco  = () => <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>;
+const UserIco   = () => <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>;
+const RepeatIco = () => <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>;
+const PlayIco   = () => <svg width="10" height="10" fill="currentColor" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>;
+const CheckIco  = () => <svg width="10" height="10" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>;
+const PauseIco  = () => <svg width="10" height="10" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>;
+const BanIco    = () => <svg width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>;
+const EditIco   = () => <svg width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>;
+const OdtIco    = () => <svg width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="4" rx="1" ry="1"/><path strokeLinecap="round" strokeLinejoin="round" d="M9 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V4a2 2 0 00-2-2h-3"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>;
+const ClockIco  = () => <svg width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
+
+// ── Helpers ──
+const todayMidnight = () => new Date(new Date().setHours(0,0,0,0));
+const calcDelay = (dateStr, status) => {
+    if (status !== 'PENDIENTE' && status !== 'EN PAUSA') return 0;
+    const schDate = new Date(dateStr + 'T00:00:00Z');
+    const diff = Math.floor((todayMidnight() - schDate) / 86400000);
+    return diff > 0 ? diff : 0;
+};
+const statusClass = (s, isPast) => s==='COMPLETADO'?'s-completed':s==='EN EJECUCION'?'s-executing':s==='EN PAUSA'?'s-paused':s==='ANULADA'?'s-cancelled':isPast?'s-overdue':'s-pending';
+const badgeClass  = (s, isPast) => s==='COMPLETADO'?'b-completed':s==='EN EJECUCION'?'b-executing':s==='EN PAUSA'?'b-paused':s==='ANULADA'?'b-cancelled':isPast?'b-overdue':'b-pending';
+const statusLabel = (s, isPast, delay) => {
+    if(s==='COMPLETADO') return '✓ COMPLETADO';
+    if(s==='EN EJECUCION') return '● EN EJECUCIÓN';
+    if(s==='EN PAUSA') return `⏸ EN PAUSA${delay>0?' · '+delay+'D':''}`;
+    if(s==='ANULADA') return '✕ ANULADA';
+    if(isPast) return `⚠ VENCIDA · ${delay}D`;
+    return '○ PENDIENTE';
+};
+const ttStatusClass = (s,isPast) => s==='COMPLETADO'?'tt-completed':s==='EN EJECUCION'?'tt-executing':s==='EN PAUSA'?'tt-paused':s==='ANULADA'?'tt-cancelled':isPast?'tt-overdue':'tt-pending';
+
+// ════════════════════════════════════════════
+const App = () => {
+    const [user,setUser]           = useState(null);
+    const [loading,setLoading]     = useState(true);
+    const [isCloud,setIsCloud]     = useState(false);
+    const [activeTab,setActiveTab] = useState('cronograma');
+    const [adminSec,setAdminSec]   = useState('zona');
+    const [isAdmin,setIsAdmin]     = useState(false);
+
+    const [zones,setZones]         = useState([]);
+    const [nodes,setNodes]         = useState([]);
+    const [schedules,setSchedules] = useState([]);
+
+    const [newZone,setNewZone]     = useState({ name:'', color:ZONE_COLORS[0] });
+    const [newNode,setNewNode]     = useState({ name:'', zoneId:'' });
+    const [newSch,setNewSch]       = useState({ date:'', zoneId:'', selectedNodes:[], recurring:false, repeatDays:30 });
+
+    // action prompt: START / PAUSE / CANCEL
+    const [actionP,setActionP]     = useState({ id:null, type:null, techs:'', odt:'', reason:'' });
+    // edit prompt: edit techs + ODT on active/paused/completed
+    const [editP,setEditP]         = useState({ id:null, techs:'', odt:'' });
+    // delete confirm
+    const [delP,setDelP]           = useState({ isOpen:false, schedule:null });
+
+    // Calendar state
+    const [curMonth,setCurMonth]   = useState(new Date());
+    const [selDate,setSelDate]     = useState(TODAY_STR);
+
+    // Hover tooltip
+    const [tooltip,setTooltip]     = useState({ visible:false, x:0, y:0, date:'' });
+    const tooltipTimer             = useRef(null);
+
+    // Filters
+    const [filterZone,setFilterZone]     = useState('');
+    const [filterStatus,setFilterStatus] = useState('');
+
+    const dbRef = useRef(null);
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-pm-app-id';
+
+    // ── Firebase init ──
+    useEffect(() => {
+        const init = async () => {
+            if (!window.FirebaseSDK) return;
+            const { initializeApp, getAuth, getFirestore, signInAnonymously, onAuthStateChanged, signInWithCustomToken } = window.FirebaseSDK;
+            try {
+                const configStr = typeof __firebase_config !== 'undefined' ? __firebase_config : window.__firebase_config_manual;
+                const app = initializeApp(JSON.parse(configStr));
+                dbRef.current = getFirestore(app);
+                const auth = getAuth(app);
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token);
+                else await signInAnonymously(auth);
+                const unsub = onAuthStateChanged(auth, u => { if(u){setUser(u);setIsCloud(true);} setLoading(false); });
+                return unsub;
+            } catch(e) { setLoading(false); }
         };
+        window.addEventListener('firebase-ready', init);
+        if (window.FirebaseSDK) init();
+        return () => window.removeEventListener('firebase-ready', init);
+    }, []);
 
-        window.__firebase_config_manual = JSON.stringify(myConfig);
+    // ── Firestore listeners ──
+    useEffect(() => {
+        if (!user || !dbRef.current) return;
+        const { collection, onSnapshot } = window.FirebaseSDK;
+        const base = ['artifacts', appId, 'public', 'data'];
+        const unZ = onSnapshot(collection(dbRef.current, ...base, 'pm_zones'),     s => setZones(s.docs.map(d=>({...d.data(),id:d.id}))), e=>console.error(e));
+        const unN = onSnapshot(collection(dbRef.current, ...base, 'pm_nodes'),     s => setNodes(s.docs.map(d=>({...d.data(),id:d.id}))), e=>console.error(e));
+        const unS = onSnapshot(collection(dbRef.current, ...base, 'pm_schedules'), s => {
+            const data = s.docs.map(d=>({...d.data(),id:d.id}));
+            data.sort((a,b)=>new Date(a.date)-new Date(b.date));
+            setSchedules(data);
+        }, e=>console.error(e));
+        return () => { unZ(); unN(); unS(); };
+    }, [user, appId]);
 
-        window.FirebaseSDK = {
-            initializeApp, getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken,
-            getFirestore, doc, setDoc, updateDoc, deleteDoc, collection, 
-            query, onSnapshot, addDoc, serverTimestamp, writeBatch
-        };
-        window.dispatchEvent(new Event('firebase-ready'));
-    </script>
+    // ── Derived data ──
+    const getZoneName  = useCallback(id => zones.find(z=>z.id===id)?.name || 'DESCONOCIDA', [zones]);
+    const getZoneColor = useCallback(id => zones.find(z=>z.id===id)?.color || 'bg-slate-500', [zones]);
+    const getZoneHex   = useCallback(id => COLOR_HEX[zones.find(z=>z.id===id)?.color] || '#94a3b8', [zones]);
+    const getNodeName  = useCallback(id => nodes.find(n=>n.id===id)?.name || 'NODO ELIMINADO', [nodes]);
 
-    <script type="text/babel">
-        const { useState, useEffect, useRef, useMemo } = React;
+    const formatDate = ds => {
+        if(!ds) return '';
+        return new Date(ds+'T00:00:00Z').toLocaleDateString('es-VE',{weekday:'long',year:'numeric',month:'short',day:'numeric',timeZone:'UTC'}).toUpperCase();
+    };
 
-        const ZONE_COLORS = [
-            'bg-red-500', 'bg-blue-500', 'bg-green-500', 'bg-yellow-400', 
-            'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-orange-500', 
-            'bg-teal-500', 'bg-cyan-500'
-        ];
+    // Stats
+    const stats = useMemo(() => {
+        const today = TODAY_STR;
+        let pending=0, executing=0, overdue=0, done=0;
+        schedules.forEach(s => {
+            if(s.status==='COMPLETADO') done++;
+            else if(s.status==='EN EJECUCION') executing++;
+            else if(s.status==='PENDIENTE' && s.date < today) overdue++;
+            else if(s.status==='PENDIENTE') pending++;
+        });
+        return { pending, executing, overdue, done };
+    }, [schedules]);
 
-        const MONTH_NAMES = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"];
+    // Filtered schedules for day detail
+    const daySchedules = useMemo(() => {
+        return schedules.filter(s => {
+            if(s.date !== selDate) return false;
+            if(filterZone && s.zoneId !== filterZone) return false;
+            if(filterStatus && s.status !== filterStatus) return false;
+            return true;
+        });
+    }, [schedules, selDate, filterZone, filterStatus]);
 
-        // Icons
-        const MaintenanceLogo = ({ className = "h-8 w-8" }) => (
-            <svg viewBox="0 0 24 24" fill="none" className={className} xmlns="http://www.w3.org/2000/svg">
-                <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" fill="currentColor"/>
-            </svg>
-        );
-        const ChevronLeft = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>;
-        const ChevronRight = () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>;
-        const DocumentPdfIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>;
+    // By date map for calendar
+    const byDate = useMemo(() => {
+        const map = {};
+        schedules.forEach(s => {
+            if(!map[s.date]) map[s.date] = [];
+            map[s.date].push(s);
+        });
+        return map;
+    }, [schedules]);
 
-        const App = () => {
-            const [user, setUser] = useState(null);
-            const [loading, setLoading] = useState(true);
-            const [isCloud, setIsCloud] = useState(false);
-            
-            const [activeTab, setActiveTab] = useState('cronograma');
-            const [adminSection, setAdminSection] = useState('zona');
-            const [isAdminMode, setIsAdminMode] = useState(false);
+    const nodesInZone = useMemo(() => nodes.filter(n=>n.zoneId===newSch.zoneId), [nodes, newSch.zoneId]);
 
-            const [zones, setZones] = useState([]);
-            const [nodes, setNodes] = useState([]);
-            const [schedules, setSchedules] = useState([]);
+    // ── Calendar nav ──
+    const prevMonth = () => setCurMonth(new Date(curMonth.getFullYear(), curMonth.getMonth()-1, 1));
+    const nextMonth = () => setCurMonth(new Date(curMonth.getFullYear(), curMonth.getMonth()+1, 1));
+    const goToday   = () => { setCurMonth(new Date()); setSelDate(TODAY_STR); };
 
-            const [newZone, setNewZone] = useState({ name: '', color: ZONE_COLORS[0] });
-            const [newNode, setNewNode] = useState({ name: '', zoneId: '' });
-            
-            const [newSchedule, setNewSchedule] = useState({
-                date: '',
-                zoneId: '',
-                selectedNodes: [],
-                recurring: false,
-                repeatDays: 30
-            });
+    // ── Tooltip ──
+    const showTooltip = (e, dateStr) => {
+        clearTimeout(tooltipTimer.current);
+        tooltipTimer.current = setTimeout(() => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            let x = rect.left + rect.width/2;
+            let y = rect.bottom + 8;
+            // Clamp to viewport
+            if(x + 160 > window.innerWidth) x = window.innerWidth - 175;
+            if(x < 10) x = 10;
+            if(y + 200 > window.innerHeight) y = rect.top - 8;
+            setTooltip({ visible:true, x, y, date:dateStr });
+        }, 300);
+    };
+    const hideTooltip = () => { clearTimeout(tooltipTimer.current); setTooltip(t=>({...t,visible:false})); };
 
-            // Action prompt (includes ODT for START)
-            const [actionPrompt, setActionPrompt] = useState({ id: null, type: null, text: '', odt: '' });
-            
-            const [deletePrompt, setDeletePrompt] = useState({ isOpen: false, schedule: null });
+    // ── CRUD ──
+    const db = (col) => {
+        const { collection } = window.FirebaseSDK;
+        return collection(dbRef.current, 'artifacts', appId, 'public', 'data', col);
+    };
+    const docRef = (col, id) => { const { doc } = window.FirebaseSDK; return doc(dbRef.current, 'artifacts', appId, 'public', 'data', col, id); };
 
-            // History Filters
-            const [historyFilterZone, setHistoryFilterZone] = useState('');
-            const [historyFilterNode, setHistoryFilterNode] = useState('');
-            const [historyFilterTech, setHistoryFilterTech] = useState('');
+    const handleAddZone = async e => {
+        e.preventDefault(); if(!newZone.name.trim()) return;
+        const { addDoc, serverTimestamp } = window.FirebaseSDK;
+        try { await addDoc(db('pm_zones'), { name:newZone.name.toUpperCase(), color:newZone.color, createdAt:serverTimestamp() }); setNewZone({name:'',color:ZONE_COLORS[0]}); } catch(e){console.error(e);}
+    };
+    const handleUpdateZoneColor = async (zoneId, color) => {
+        const { updateDoc } = window.FirebaseSDK;
+        try { await updateDoc(docRef('pm_zones', zoneId), {color}); } catch(e){console.error(e);}
+    };
+    const handleAddNode = async e => {
+        e.preventDefault(); if(!newNode.name.trim()||!newNode.zoneId) return;
+        const { addDoc, serverTimestamp } = window.FirebaseSDK;
+        try { await addDoc(db('pm_nodes'), { name:newNode.name.toUpperCase(), zoneId:newNode.zoneId, createdAt:serverTimestamp() }); setNewNode({name:'',zoneId:''}); } catch(e){console.error(e);}
+    };
+    const deleteItem = async (col, id, name) => {
+        if(!confirm(`¿ELIMINAR: ${name}?`)) return;
+        const { deleteDoc } = window.FirebaseSDK;
+        try { await deleteDoc(docRef(col, id)); } catch(e){console.error(e);}
+    };
+    const toggleNode = id => {
+        const cur = newSch.selectedNodes;
+        if(cur.includes(id)) { setNewSch({...newSch, selectedNodes:cur.filter(x=>x!==id)}); }
+        else { if(cur.length>=5){ alert("MÁXIMO 5 NODOS/DÍA."); return; } setNewSch({...newSch, selectedNodes:[...cur,id]}); }
+    };
 
-            // Calendar state
-            const [currentMonth, setCurrentMonth] = useState(new Date());
-            const [selectedDateDetails, setSelectedDateDetails] = useState(new Date().toISOString().split('T')[0]);
-
-            const dbRef = useRef(null);
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-pm-app-id';
-
-            useEffect(() => {
-                const init = async () => {
-                    if (!window.FirebaseSDK) return;
-                    const { initializeApp, getAuth, getFirestore, signInAnonymously, onAuthStateChanged, signInWithCustomToken } = window.FirebaseSDK;
-                    try {
-                        const configStr = typeof __firebase_config !== 'undefined' ? __firebase_config : window.__firebase_config_manual;
-                        const config = JSON.parse(configStr);
-                        const app = initializeApp(config);
-                        dbRef.current = getFirestore(app);
-                        const auth = getAuth(app);
-                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                            await signInWithCustomToken(auth, __initial_auth_token);
-                        } else {
-                            await signInAnonymously(auth);
-                        }
-
-                        const unsubscribe = onAuthStateChanged(auth, (u) => {
-                            if (u) { setUser(u); setIsCloud(true); }
-                            setLoading(false);
-                        });
-                        return unsubscribe;
-                    } catch (e) { setLoading(false); }
-                };
-                window.addEventListener('firebase-ready', init);
-                if (window.FirebaseSDK) init();
-                return () => window.removeEventListener('firebase-ready', init);
-            }, []);
-
-            useEffect(() => {
-                if (!user || !dbRef.current) return;
-                const { collection, onSnapshot } = window.FirebaseSDK;
-                
-                const zonesPath = collection(dbRef.current, 'artifacts', appId, 'public', 'data', 'pm_zones');
-                const nodesPath = collection(dbRef.current, 'artifacts', appId, 'public', 'data', 'pm_nodes');
-                const schedulesPath = collection(dbRef.current, 'artifacts', appId, 'public', 'data', 'pm_schedules');
-                
-                const unsubZones = onSnapshot(zonesPath, 
-                    (snap) => setZones(snap.docs.map(d => ({ ...d.data(), id: d.id }))),
-                    (err) => console.error("Error zonas:", err)
-                );
-                const unsubNodes = onSnapshot(nodesPath, 
-                    (snap) => setNodes(snap.docs.map(d => ({ ...d.data(), id: d.id }))),
-                    (err) => console.error("Error nodos:", err)
-                );
-                const unsubSchedules = onSnapshot(schedulesPath, 
-                    (snap) => {
-                        const data = snap.docs.map(d => ({ ...d.data(), id: d.id }));
-                        data.sort((a,b) => new Date(a.date) - new Date(b.date));
-                        setSchedules(data);
-                    },
-                    (err) => console.error("Error cronograma:", err)
-                );
-                
-                return () => { unsubZones(); unsubNodes(); unsubSchedules(); };
-            }, [user, appId]);
-
-            const formatDate = (dateStr) => {
-                if(!dateStr) return '';
-                const options = { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' };
-                const date = new Date(dateStr + 'T00:00:00Z');
-                return date.toLocaleDateString('es-VE', options).toUpperCase();
-            };
-
-            const handleAddZone = async (e) => {
-                e.preventDefault();
-                if(!newZone.name.trim()) return;
-                const { collection, addDoc, serverTimestamp } = window.FirebaseSDK;
-                try {
-                    await addDoc(collection(dbRef.current, 'artifacts', appId, 'public', 'data', 'pm_zones'), {
-                        name: newZone.name.toUpperCase(),
-                        color: newZone.color,
-                        createdAt: serverTimestamp()
-                    });
-                    setNewZone({ name: '', color: ZONE_COLORS[0] });
-                } catch(e) { console.error(e); }
-            };
-
-            const handleUpdateZoneColor = async (zoneId, newColor) => {
-                const { doc, updateDoc } = window.FirebaseSDK;
-                try {
-                    await updateDoc(doc(dbRef.current, 'artifacts', appId, 'public', 'data', 'pm_zones', zoneId), {
-                        color: newColor
-                    });
-                } catch(e) { console.error(e); }
-            };
-
-            const handleAddNode = async (e) => {
-                e.preventDefault();
-                if(!newNode.name.trim() || !newNode.zoneId) return;
-                const { collection, addDoc, serverTimestamp } = window.FirebaseSDK;
-                try {
-                    await addDoc(collection(dbRef.current, 'artifacts', appId, 'public', 'data', 'pm_nodes'), {
-                        name: newNode.name.toUpperCase(),
-                        zoneId: newNode.zoneId,
-                        createdAt: serverTimestamp()
-                    });
-                    setNewNode({ name: '', zoneId: '' });
-                } catch(e) { console.error(e); }
-            };
-
-            const deleteItem = async (collectionName, docId, name) => {
-                if(!confirm(`¿ELIMINAR DEFINITIVAMENTE: ${name}?`)) return;
-                const { doc, deleteDoc } = window.FirebaseSDK;
-                try {
-                    await deleteDoc(doc(dbRef.current, 'artifacts', appId, 'public', 'data', collectionName, docId));
-                } catch(e) { console.error(e); }
-            };
-
-            const toggleNodeSelection = (nodeId) => {
-                const current = newSchedule.selectedNodes;
-                if(current.includes(nodeId)) {
-                    setNewSchedule({...newSchedule, selectedNodes: current.filter(id => id !== nodeId)});
-                } else {
-                    if(current.length >= 5) {
-                        alert("MÁXIMO PERMITIDO: Solo se pueden realizar 5 mantenimientos diarios.");
-                        return;
-                    }
-                    setNewSchedule({...newSchedule, selectedNodes: [...current, nodeId]});
+    const handleSaveSchedule = async e => {
+        e.preventDefault();
+        if(!newSch.date||!newSch.zoneId||newSch.selectedNodes.length===0){ alert("SELECCIONE FECHA, ZONA Y AL MENOS UN NODO."); return; }
+        if(newSch.recurring&&newSch.repeatDays<=0){ alert("INTERVALO DEBE SER > 0."); return; }
+        const { addDoc: aDoc, serverTimestamp:sTs, writeBatch:wb } = window.FirebaseSDK;
+        const batch = wb(dbRef.current);
+        const schCol = db('pm_schedules');
+        const groupId = newSch.recurring ? Date.now().toString() : null;
+        let nd = new Date(newSch.date+'T00:00:00Z');
+        const ed = new Date(nd);
+        if(newSch.recurring) ed.setFullYear(ed.getFullYear()+1);
+        const saved = [];
+        while(nd<=ed){
+            let dow = nd.getUTCDay();
+            if(dow===6) nd.setUTCDate(nd.getUTCDate()+2);
+            if(dow===0) nd.setUTCDate(nd.getUTCDate()+1);
+            let found=false, cd=new Date(nd);
+            for(let i=0;i<30;i++){
+                let cdd=cd.getUTCDay();
+                if(cdd!==6&&cdd!==0){
+                    let ds=cd.toISOString().split('T')[0];
+                    let ex=schedules.filter(s=>s.date===ds).reduce((acc,s)=>acc+(s.nodes?.length||0),0);
+                    let eq=saved.filter(d=>d===ds).length*newSch.selectedNodes.length;
+                    if(ex+eq+newSch.selectedNodes.length<=5){found=true;nd=new Date(cd);break;}
                 }
-            };
+                cd.setUTCDate(cd.getUTCDate()+1);
+            }
+            if(!found){alert("SIN ESPACIO EN FECHAS CERCANAS.");break;}
+            const ds=nd.toISOString().split('T')[0];
+            saved.push(ds);
+            const { doc:fd } = window.FirebaseSDK;
+            const ref=fd(schCol);
+            batch.set(ref,{date:ds,zoneId:newSch.zoneId,techs:'',odt:'',reason:'',nodes:newSch.selectedNodes,status:'PENDIENTE',createdAt:sTs(),isRecurring:newSch.recurring,groupId,repeatDays:newSch.recurring?Number(newSch.repeatDays):null});
+            if(!newSch.recurring) break;
+            nd.setUTCDate(nd.getUTCDate()+Number(newSch.repeatDays));
+        }
+        try {
+            await batch.commit();
+            setSelDate(saved[0]);
+            setNewSch({date:'',zoneId:'',selectedNodes:[],recurring:false,repeatDays:30});
+            const fd0=new Date(saved[0]+'T00:00:00Z');
+            setCurMonth(new Date(fd0.getFullYear(),fd0.getMonth(),1));
+            setActiveTab('cronograma');
+            alert(`GUARDADO · ${saved.length} FECHA(S) GENERADAS`);
+        } catch(e){console.error(e);alert("ERROR: "+e.message);}
+    };
 
-            const handleSaveSchedule = async (e) => {
-                e.preventDefault();
-                if(!newSchedule.date || !newSchedule.zoneId || newSchedule.selectedNodes.length === 0) {
-                    alert("Debe seleccionar Fecha, Zona y al menos un Nodo.");
-                    return;
-                }
-                
-                if (newSchedule.recurring && newSchedule.repeatDays <= 0) {
-                    alert("El intervalo de días debe ser mayor a 0.");
-                    return;
-                }
+    // ── Action prompt (START/PAUSE/CANCEL) ──
+    const triggerAction = (id, type, sch) => {
+        if(type==='START') setActionP({ id, type, techs: sch.techs||'', odt: sch.odt||'', reason:'' });
+        else setActionP({ id, type, techs:'', odt:'', reason:'' });
+    };
+    const submitAction = async () => {
+        const { updateDoc } = window.FirebaseSDK;
+        const ref = docRef('pm_schedules', actionP.id);
+        try {
+            if(actionP.type==='START'){
+                if(!actionP.techs.trim()){alert("INGRESE LOS TÉCNICOS.");return;}
+                await updateDoc(ref,{ status:'EN EJECUCION', techs:actionP.techs.toUpperCase(), odt:actionP.odt.toUpperCase(), reason:'' });
+            } else if(actionP.type==='PAUSE'){
+                if(!actionP.reason.trim()){alert("INGRESE EL MOTIVO.");return;}
+                await updateDoc(ref,{ status:'EN PAUSA', reason:actionP.reason.toUpperCase() });
+            } else if(actionP.type==='CANCEL'){
+                if(!actionP.reason.trim()){alert("INGRESE EL MOTIVO.");return;}
+                await updateDoc(ref,{ status:'ANULADA', reason:actionP.reason.toUpperCase() });
+            }
+            setActionP({id:null,type:null,techs:'',odt:'',reason:''});
+        } catch(e){console.error(e);}
+    };
 
-                const { collection, doc: firestoreDoc, serverTimestamp, writeBatch } = window.FirebaseSDK;
-                const batch = writeBatch(dbRef.current);
-                const schedulesCol = collection(dbRef.current, 'artifacts', appId, 'public', 'data', 'pm_schedules');
+    // ── Edit (techs + ODT) ──
+    const triggerEdit = (sch) => setEditP({ id:sch.id, techs:sch.techs||'', odt:sch.odt||'' });
+    const submitEdit = async () => {
+        if(!editP.techs.trim()){alert("INGRESE LOS TÉCNICOS.");return;}
+        const { updateDoc } = window.FirebaseSDK;
+        try {
+            await updateDoc(docRef('pm_schedules', editP.id), { techs:editP.techs.toUpperCase(), odt:editP.odt.toUpperCase() });
+            setEditP({id:null,techs:'',odt:''});
+        } catch(e){console.error(e);}
+    };
 
-                const groupId = newSchedule.recurring ? Date.now().toString() : null;
-                
-                let nextDate = new Date(newSchedule.date + 'T00:00:00Z');
-                const endDate = new Date(nextDate);
-                
-                if (newSchedule.recurring) {
-                    endDate.setFullYear(endDate.getFullYear() + 1); 
-                }
+    const handleStatusChange = async (sch, status) => {
+        const { updateDoc } = window.FirebaseSDK;
+        try {
+            let upd = {status};
+            if(status==='PENDIENTE') upd.reason='';
+            await updateDoc(docRef('pm_schedules', sch.id), upd);
+        } catch(e){console.error(e);}
+    };
 
-                const datesToSave = [];
+    const promptDelete = sch => {
+        if(sch.groupId) setDelP({isOpen:true,schedule:sch});
+        else deleteItem('pm_schedules', sch.id, 'ESTA PROGRAMACIÓN');
+    };
+    const confirmDel = async mode => {
+        const { deleteDoc:dd, writeBatch:wb } = window.FirebaseSDK;
+        try {
+            if(mode==='SINGLE'){ await dd(docRef('pm_schedules', delP.schedule.id)); }
+            else {
+                const list = schedules.filter(s=>s.groupId===delP.schedule.groupId);
+                const batch = wb(dbRef.current);
+                list.forEach(s=>batch.delete(docRef('pm_schedules',s.id)));
+                await batch.commit();
+                alert(`${list.length} MANTENIMIENTOS ELIMINADOS.`);
+            }
+        } catch(e){console.error(e);}
+        setDelP({isOpen:false,schedule:null});
+    };
 
-                while (nextDate <= endDate) {
-                    let dayOfWeek = nextDate.getUTCDay();
-                    if (dayOfWeek === 6) nextDate.setUTCDate(nextDate.getUTCDate() + 2); 
-                    if (dayOfWeek === 0) nextDate.setUTCDate(nextDate.getUTCDate() + 1); 
+    const exportPDF = () => {
+        if(!window.jspdf?.jsPDF){alert("PDF cargando...");return;}
+        const docPdf = new window.jspdf.jsPDF();
+        const done = schedules.filter(s=>s.status==='COMPLETADO');
+        if(!done.length){alert("NO HAY COMPLETADOS.");return;}
+        docPdf.setFontSize(16); docPdf.setTextColor(13,148,136);
+        docPdf.text("HISTORIAL PM – AIRTEK ZULIA", 14, 20);
+        docPdf.setFontSize(9); docPdf.setTextColor(100,116,139);
+        docPdf.text(`Generado: ${new Date().toLocaleDateString('es-VE')}`, 14, 28);
+        docPdf.autoTable({
+            startY:34,
+            head:[['FECHA','ODT','ZONA','NODOS','TÉCNICOS']],
+            body:done.map(s=>[formatDate(s.date),s.odt||'—',getZoneName(s.zoneId),s.nodes.map(n=>getNodeName(n)).join(', '),s.techs||'NO REG.']),
+            headStyles:{fillColor:[13,148,136]},
+            styles:{fontSize:7,cellPadding:3},
+            alternateRowStyles:{fillColor:[248,250,252]}
+        });
+        docPdf.save("Historial_Airtek.pdf");
+    };
 
-                    let foundSlot = false;
-                    let checkDate = new Date(nextDate);
+    // ════════════════════════════════════════════
+    // CALENDAR COMPONENT
+    // ════════════════════════════════════════════
+    const Calendar = () => {
+        const year  = curMonth.getFullYear();
+        const month = curMonth.getMonth();
+        const firstDay = new Date(year,month,1).getDay();
+        const days     = new Date(year,month+1,0).getDate();
+        const cells = [];
+        for(let i=0;i<firstDay;i++) cells.push(null);
+        for(let i=1;i<=days;i++)    cells.push(i);
 
-                    for (let i = 0; i < 30; i++) { 
-                        let checkDay = checkDate.getUTCDay();
-                        if (checkDay !== 6 && checkDay !== 0) {
-                            let dateStr = checkDate.toISOString().split('T')[0];
-                            
-                            let existingNodesCount = schedules
-                                .filter(s => s.date === dateStr)
-                                .reduce((sum, s) => sum + (s.nodes?.length || 0), 0);
-                            
-                            let enqueuedCount = datesToSave.filter(d => d === dateStr).length * newSchedule.selectedNodes.length;
+        // check if any day in view has overdue
+        const hasOverdueInRange = cells.some(d => {
+            if(!d) return false;
+            const ds = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+            return (byDate[ds]||[]).some(s=>s.status==='PENDIENTE'&&ds<TODAY_STR);
+        });
 
-                            if (existingNodesCount + enqueuedCount + newSchedule.selectedNodes.length <= 5) {
-                                foundSlot = true;
-                                nextDate = new Date(checkDate); 
-                                break;
-                            }
-                        }
-                        checkDate.setUTCDate(checkDate.getUTCDate() + 1);
-                    }
-
-                    if (!foundSlot) {
-                        alert("ADVERTENCIA: No se encontró espacio (máx 5/día) en el calendario cercano para algunas fechas. La serie generada estará incompleta.");
-                        break;
-                    }
-
-                    const finalDateStr = nextDate.toISOString().split('T')[0];
-                    datesToSave.push(finalDateStr);
-
-                    const newRef = firestoreDoc(schedulesCol);
-                    batch.set(newRef, {
-                        date: finalDateStr,
-                        zoneId: newSchedule.zoneId,
-                        techs: '',
-                        odt: '',
-                        reason: '',
-                        nodes: newSchedule.selectedNodes,
-                        status: 'PENDIENTE',
-                        createdAt: serverTimestamp(),
-                        isRecurring: newSchedule.recurring,
-                        groupId: groupId,
-                        repeatDays: newSchedule.recurring ? Number(newSchedule.repeatDays) : null
-                    });
-
-                    if (!newSchedule.recurring) break;
-
-                    nextDate.setUTCDate(nextDate.getUTCDate() + Number(newSchedule.repeatDays));
-                }
-
-                try {
-                    await batch.commit(); 
-                    setSelectedDateDetails(datesToSave[0]); 
-                    setNewSchedule({ date: '', zoneId: '', selectedNodes: [], recurring: false, repeatDays: 30 });
-                    
-                    const firstSavedDate = new Date(datesToSave[0] + 'T00:00:00Z');
-                    setCurrentMonth(new Date(firstSavedDate.getFullYear(), firstSavedDate.getMonth(), 1));
-                    
-                    setActiveTab('cronograma');
-                    alert(`PROGRAMACIÓN GUARDADA. Se generaron ${datesToSave.length} fecha(s).`);
-                } catch(e) { console.error(e); alert("Error guardando: " + e.message); }
-            };
-
-            const triggerActionPrompt = (id, type) => {
-                setActionPrompt({ id, type, text: '', odt: '' });
-            };
-
-            const submitActionPrompt = async () => {
-                if (!actionPrompt.text.trim()) {
-                    alert("POR FAVOR COMPLETE EL CAMPO REQUERIDO (TÉCNICOS O MOTIVO).");
-                    return;
-                }
-                const { doc, updateDoc } = window.FirebaseSDK;
-                const scheduleRef = doc(dbRef.current, 'artifacts', appId, 'public', 'data', 'pm_schedules', actionPrompt.id);
-                
-                try {
-                    if (actionPrompt.type === 'START') {
-                        await updateDoc(scheduleRef, { 
-                            status: 'EN EJECUCION', 
-                            techs: actionPrompt.text.toUpperCase(), 
-                            odt: actionPrompt.odt ? actionPrompt.odt.toUpperCase() : '',
-                            reason: '' 
-                        });
-                    } else if (actionPrompt.type === 'PAUSE') {
-                        await updateDoc(scheduleRef, { status: 'EN PAUSA', reason: actionPrompt.text.toUpperCase() });
-                    } else if (actionPrompt.type === 'CANCEL') {
-                        await updateDoc(scheduleRef, { status: 'ANULADA', reason: actionPrompt.text.toUpperCase() });
-                    }
-                    setActionPrompt({ id: null, type: null, text: '', odt: '' });
-                } catch(e) { console.error(e); }
-            };
-
-            const handleStatusChange = async (sch, newStatus) => {
-                const { doc, updateDoc } = window.FirebaseSDK;
-                const scheduleRef = doc(dbRef.current, 'artifacts', appId, 'public', 'data', 'pm_schedules', sch.id);
-                try {
-                    let updates = { status: newStatus };
-                    if(newStatus === 'PENDIENTE') {
-                        updates.reason = '';
-                    }
-                    await updateDoc(scheduleRef, updates);
-                } catch(e) { console.error(e); }
-            };
-
-            const promptDeleteSchedule = (sch) => {
-                if (sch.groupId) {
-                    setDeletePrompt({ isOpen: true, schedule: sch });
-                } else {
-                    deleteItem('pm_schedules', sch.id, 'ESTA PROGRAMACIÓN');
-                }
-            };
-
-            const confirmSeriesDelete = async (mode) => {
-                const { doc, deleteDoc, writeBatch } = window.FirebaseSDK;
-                try {
-                    if (mode === 'SINGLE') {
-                        await deleteDoc(doc(dbRef.current, 'artifacts', appId, 'public', 'data', 'pm_schedules', deletePrompt.schedule.id));
-                    } else if (mode === 'SERIES') {
-                        const toDelete = schedules.filter(s => s.groupId === deletePrompt.schedule.groupId);
-                        const batch = writeBatch(dbRef.current);
-                        toDelete.forEach(s => {
-                            batch.delete(doc(dbRef.current, 'artifacts', appId, 'public', 'data', 'pm_schedules', s.id));
-                        });
-                        await batch.commit();
-                        alert(`Se eliminaron ${toDelete.length} mantenimientos de esta serie.`);
-                    }
-                } catch(e) { console.error(e); }
-                setDeletePrompt({ isOpen: false, schedule: null });
-            };
-
-            const getFilteredHistory = () => {
-                let filtered = schedules.filter(s => s.status === 'COMPLETADO');
-                
-                if (historyFilterZone) {
-                    filtered = filtered.filter(s => s.zoneId === historyFilterZone);
-                }
-                if (historyFilterNode) {
-                    filtered = filtered.filter(s => s.nodes.includes(historyFilterNode));
-                }
-                if (historyFilterTech) {
-                    const searchTerm = historyFilterTech.toUpperCase();
-                    filtered = filtered.filter(s => s.techs && s.techs.includes(searchTerm));
-                }
-                
-                return filtered.sort((a,b) => new Date(b.date) - new Date(a.date));
-            };
-
-            const exportToPDF = () => {
-                if (!window.jspdf || !window.jspdf.jsPDF) {
-                    alert("La librería PDF aún está cargando. Intente en unos segundos.");
-                    return;
-                }
-                const doc = new window.jspdf.jsPDF();
-                const filteredData = getFilteredHistory();
-                
-                if(filteredData.length === 0) {
-                    alert("NO HAY MANTENIMIENTOS COMPLETADOS PARA EXPORTAR CON ESTOS FILTROS.");
-                    return;
-                }
-
-                doc.setFontSize(16);
-                doc.setTextColor(13, 148, 136); 
-                doc.text("HISTORIAL DE MANTENIMIENTO PREVENTIVO", 14, 20);
-                
-                doc.setFontSize(10);
-                doc.setTextColor(100, 116, 139);
-                doc.text(`Generado el: ${new Date().toLocaleDateString('es-VE')}`, 14, 28);
-
-                // Si hay filtros activos, mostrarlos en el PDF
-                let filterText = "";
-                if (historyFilterZone) filterText += `Zona: ${getZoneName(historyFilterZone)} | `;
-                if (historyFilterNode) filterText += `Nodo: ${getNodeName(historyFilterNode)} | `;
-                if (historyFilterTech) filterText += `Técnico: ${historyFilterTech}`;
-                
-                if (filterText) {
-                    doc.setFontSize(8);
-                    doc.text(`Filtros: ${filterText}`, 14, 33);
-                }
-
-                const tableData = filteredData.map(s => [
-                    formatDate(s.date),
-                    getZoneName(s.zoneId),
-                    s.nodes.map(nId => getNodeName(nId)).join(', '),
-                    s.odt || 'N/A',
-                    s.techs || 'NO REGISTRADO'
-                ]);
-
-                doc.autoTable({
-                    startY: filterText ? 38 : 35,
-                    head: [['FECHA', 'ZONA', 'NODOS INTERVENIDOS', 'ODT', 'TÉCNICOS']],
-                    body: tableData,
-                    headStyles: { fillColor: [13, 148, 136] },
-                    styles: { fontSize: 8, cellPadding: 4 },
-                    alternateRowStyles: { fillColor: [248, 250, 252] }
-                });
-
-                doc.save("Historial_Mantenimientos_Airtek.pdf");
-            };
-
-            const nodesInSelectedZone = useMemo(() => {
-                return nodes.filter(n => n.zoneId === newSchedule.zoneId);
-            }, [nodes, newSchedule.zoneId]);
-
-            const getZoneName = (zoneId) => {
-                const z = zones.find(z => z.id === zoneId);
-                return z ? z.name : 'ZONA DESCONOCIDA';
-            };
-            const getZoneColor = (zoneId) => {
-                const z = zones.find(z => z.id === zoneId);
-                return z ? (z.color || 'bg-slate-500') : 'bg-slate-500';
-            };
-            const getNodeName = (nodeId) => {
-                const n = nodes.find(n => n.id === nodeId);
-                return n ? n.name : 'NODO ELIMINADO';
-            };
-
-            // Lógica del Calendario
-            const prevMonth = () => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
-            const nextMonth = () => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
-
-            const renderCalendar = () => {
-                const year = currentMonth.getFullYear();
-                const month = currentMonth.getMonth();
-                
-                const firstDay = new Date(year, month, 1).getDay(); 
-                const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-                const daysArray = [];
-                for (let i = 0; i < firstDay; i++) daysArray.push(null); 
-                for (let i = 1; i <= daysInMonth; i++) daysArray.push(i);
-
-                const schedulesByDate = {};
-                schedules.forEach(s => {
-                    if(!schedulesByDate[s.date]) schedulesByDate[s.date] = [];
-                    schedulesByDate[s.date].push(s);
-                });
-
-                return (
-                    <div className="bg-white p-4 sm:p-6 rounded-[2.5rem] shadow-premium border border-slate-100 relative">
-                        {deletePrompt.isOpen && (
-                            <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-20 flex items-center justify-center rounded-[2.5rem] p-6 animate-in fade-in duration-200">
-                                <div className="bg-white border-2 border-red-100 shadow-2xl p-6 rounded-3xl max-w-sm text-center space-y-4">
-                                    <div className="w-12 h-12 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-2">
-                                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                    </div>
-                                    <h3 className="text-sm font-black text-slate-800">ELIMINAR TAREA RECURRENTE</h3>
-                                    <p className="text-[10px] text-slate-500 font-bold leading-relaxed">Esta inspección pertenece a una serie programada para todo el año.</p>
-                                    <div className="flex flex-col gap-2 pt-2">
-                                        <button onClick={() => confirmSeriesDelete('SERIES')} className="bg-red-500 text-white p-3 rounded-xl text-[10px] font-black tracking-widest shadow-md">ELIMINAR TODA LA SERIE</button>
-                                        <button onClick={() => confirmSeriesDelete('SINGLE')} className="bg-orange-100 text-orange-700 p-3 rounded-xl text-[10px] font-black tracking-widest">ELIMINAR SOLO ESTA FECHA</button>
-                                        <button onClick={() => setDeletePrompt({isOpen: false, schedule: null})} className="text-slate-400 p-3 text-[10px] font-black tracking-widest mt-2">CANCELAR</button>
-                                    </div>
-                                </div>
+        return (
+            <div className="card card-xl p-4 sm:p-5" style={{position:'relative'}}>
+                {delP.isOpen && (
+                    <div className="del-overlay">
+                        <div className="del-modal">
+                            <div style={{width:48,height:48,background:'#fef2f2',color:'#ef4444',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 14px'}}><TrashIco /></div>
+                            <div style={{fontSize:'.68rem',fontWeight:900,marginBottom:6}}>TAREA RECURRENTE</div>
+                            <div style={{fontSize:'.6rem',color:'var(--muted)',lineHeight:1.5,marginBottom:18}}>Esta inspección pertenece a una serie programada.</div>
+                            <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                                <button onClick={()=>confirmDel('SERIES')} className="btn" style={{background:'#ef4444',color:'#fff',width:'100%',padding:'12px',boxShadow:'0 3px 12px rgba(239,68,68,.3)'}}>ELIMINAR TODA LA SERIE</button>
+                                <button onClick={()=>confirmDel('SINGLE')} className="btn btn-pause" style={{width:'100%',padding:'12px'}}>SOLO ESTA FECHA</button>
+                                <button onClick={()=>setDelP({isOpen:false,schedule:null})} className="btn btn-reopen" style={{width:'100%',padding:'10px',marginTop:4}}>CANCELAR</button>
                             </div>
-                        )}
-
-                        <div className="flex items-center justify-between mb-6 px-2">
-                            <button onClick={prevMonth} className="p-2 bg-slate-50 hover:bg-teal-50 text-slate-600 hover:text-teal-600 rounded-xl transition-colors"><ChevronLeft /></button>
-                            <h2 className="text-sm font-black text-slate-800 tracking-widest">{MONTH_NAMES[month]} {year}</h2>
-                            <button onClick={nextMonth} className="p-2 bg-slate-50 hover:bg-teal-50 text-slate-600 hover:text-teal-600 rounded-xl transition-colors"><ChevronRight /></button>
-                        </div>
-
-                        <div className="grid grid-cols-7 gap-1 sm:gap-2">
-                            {['DOM','LUN','MAR','MIE','JUE','VIE','SAB'].map(d => (
-                                <div key={d} className="text-[9px] font-black text-center text-slate-400 py-2 tracking-widest">{d}</div>
-                            ))}
-                            
-                            {daysArray.map((day, idx) => {
-                                if (!day) return <div key={`empty-${idx}`} className="p-2"></div>;
-                                
-                                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                                const daySchedules = schedulesByDate[dateStr] || [];
-                                const isSelected = selectedDateDetails === dateStr;
-                                const isToday = new Date().toISOString().split('T')[0] === dateStr;
-
-                                return (
-                                    <div 
-                                        key={idx} 
-                                        onClick={() => setSelectedDateDetails(dateStr)} 
-                                        className={`min-h-[70px] p-1.5 border-2 rounded-2xl cursor-pointer transition-all flex flex-col items-center ${
-                                            isSelected ? 'border-teal-500 bg-teal-50/50 shadow-md transform scale-105 relative z-10' : 
-                                            'border-transparent bg-slate-50 hover:border-teal-200'
-                                        }`}
-                                    >
-                                        <div className={`text-[11px] font-black w-6 h-6 flex items-center justify-center rounded-full mb-1 ${
-                                            isToday ? 'bg-teal-600 text-white shadow-sm' : 
-                                            isSelected ? 'text-teal-700' : 'text-slate-600'
-                                        }`}>
-                                            {day}
-                                        </div>
-                                        
-                                        <div className="flex flex-wrap gap-1 justify-center mt-auto w-full px-1">
-                                            {daySchedules.map((s, i) => {
-                                                const isExecuting = s.status === 'EN EJECUCION';
-                                                const isPaused = s.status === 'EN PAUSA';
-                                                const isCancelled = s.status === 'ANULADA';
-                                                
-                                                let bulletColor = getZoneColor(s.zoneId);
-                                                if(isCancelled) bulletColor = 'bg-red-200';
-                                                else if(isPaused) bulletColor = 'bg-amber-300';
-
-                                                return (
-                                                    <div 
-                                                        key={`${s.id}-${i}`} 
-                                                        className={`w-2.5 h-2.5 rounded-full shadow-sm ${bulletColor} ${isExecuting ? 'ring-2 ring-blue-400 animate-pulse' : ''}`} 
-                                                        title={`${getZoneName(s.zoneId)} - ${s.status}`}>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                )
-                            })}
                         </div>
                     </div>
-                );
-            };
+                )}
 
-            if (loading) return <div className="h-screen flex flex-col items-center justify-center bg-white"><div className="text-teal-600 animate-bounce mb-4"><MaintenanceLogo className="h-16 w-16" /></div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">CONECTANDO...</p></div>;
+                {/* Header */}
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
+                    <button onClick={prevMonth} className="btn btn-reopen" style={{padding:'7px',borderRadius:'10px'}}><ChevL /></button>
+                    <div style={{textAlign:'center'}}>
+                        <div className="cal-hdr">{MONTH_NAMES[month]} {year}</div>
+                        {hasOverdueInRange && <div style={{fontSize:'.55rem',color:'#ef4444',fontWeight:800,letterSpacing:'.1em',marginTop:2}}>⚠ HAY TAREAS VENCIDAS</div>}
+                    </div>
+                    <button onClick={nextMonth} className="btn btn-reopen" style={{padding:'7px',borderRadius:'10px'}}><ChevR /></button>
+                </div>
 
-            return (
-                <div className="min-h-screen pb-20 no-print uppercase font-bold text-slate-900">
-                    <header className="bg-white border-b border-slate-100 sticky top-0 z-50 px-6 py-4">
-                        <div className="max-w-3xl mx-auto flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                                <div className="bg-teal-600 text-white p-2 rounded-xl shadow-lg"><MaintenanceLogo className="h-7 w-7" /></div>
-                                <div>
-                                    <div className="flex items-center gap-2"><span className="text-lg font-black tracking-tighter uppercase">Airtek</span><span className="text-[10px] font-black bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded tracking-tighter">PREVENTIVO</span></div>
-                                    <div className="flex items-center gap-1.5 mt-0.5"><span className={`w-1.5 h-1.5 rounded-full ${isCloud ? 'bg-emerald-500 pulse-online' : 'bg-red-500'}`}></span><p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{isCloud ? 'ONLINE' : 'OFFLINE'}</p></div>
+                {/* Day labels */}
+                <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:'4px',marginBottom:4}}>
+                    {['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'].map(d=>(
+                        <div key={d} className="cal-day-lbl">{d}</div>
+                    ))}
+                </div>
+
+                {/* Cells */}
+                <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:'4px'}}>
+                    {cells.map((day,idx) => {
+                        if(!day) return <div key={`e${idx}`} />;
+                        const ds = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+                        const ds_scheds  = byDate[ds]||[];
+                        const isSelected = selDate===ds;
+                        const isToday    = TODAY_STR===ds;
+                        const hasOverdue = ds_scheds.some(s=>s.status==='PENDIENTE'&&ds<TODAY_STR);
+                        const totalNodes = ds_scheds.reduce((acc,s)=>acc+(s.nodes?.length||0),0);
+                        const capPct     = Math.min(100,(totalNodes/5)*100);
+                        const capCls     = capPct===0?'cap-0':capPct<=40?'cap-low':capPct<=80?'cap-mid':'cap-max';
+
+                        return (
+                            <div
+                                key={idx}
+                                onClick={()=>setSelDate(ds)}
+                                onMouseEnter={e=>{if(ds_scheds.length>0) showTooltip(e,ds);}}
+                                onMouseLeave={hideTooltip}
+                                className={`cal-cell${isSelected?' cal-active':''}`}
+                            >
+                                {hasOverdue && <span className="cell-overdue-dot" />}
+                                <div className={`cal-num ${isToday?'cal-num-today':isSelected?'cal-num-selected':'cal-num-normal'}`}>{day}</div>
+                                <div className="cal-dots">
+                                    {ds_scheds.map((s,i) => {
+                                        const ic = s.status==='ANULADA'?'#fca5a5':s.status==='EN PAUSA'?'#fcd34d':s.status==='EN EJECUCION'?'#93c5fd':s.status==='COMPLETADO'?'#6ee7b7':null;
+                                        return (
+                                            <div
+                                                key={i}
+                                                className={`cal-dot ${!ic?getZoneColor(s.zoneId):''} ${s.status==='EN EJECUCION'?'animate-pulse':''}`}
+                                                style={ic?{background:ic}:{}}
+                                                title={`${getZoneName(s.zoneId)} · ${s.status}`}
+                                            />
+                                        );
+                                    })}
+                                </div>
+                                {totalNodes > 0 && (
+                                    <div className="cap-bar">
+                                        <div className={`cap-fill ${capCls}`} style={{width:`${capPct}%`}} />
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+
+                {/* Legend */}
+                <div style={{display:'flex',flexWrap:'wrap',gap:'10px',marginTop:14,paddingTop:12,borderTop:'1px solid var(--border)'}}>
+                    {[
+                        {color:'#93c5fd',label:'EN EJECUCIÓN'},
+                        {color:'#fcd34d',label:'EN PAUSA'},
+                        {color:'#6ee7b7',label:'COMPLETADO'},
+                        {color:'#fca5a5',label:'ANULADO'},
+                    ].map(l=>(
+                        <div key={l.label} style={{display:'flex',alignItems:'center',gap:5}}>
+                            <div style={{width:8,height:8,borderRadius:'50%',background:l.color,flexShrink:0}} />
+                            <span style={{fontSize:'.55rem',fontWeight:800,letterSpacing:'.1em',color:'var(--muted)'}}>{l.label}</span>
+                        </div>
+                    ))}
+                    <div style={{display:'flex',alignItems:'center',gap:5}}>
+                        <div style={{width:8,height:8,borderRadius:'50%',background:'#ef4444',flexShrink:0,boxShadow:'0 0 0 2px rgba(239,68,68,.25)'}} />
+                        <span style={{fontSize:'.55rem',fontWeight:800,letterSpacing:'.1em',color:'var(--muted)'}}>VENCIDA</span>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    // ════════════════════════════════════════════
+    // HOVER TOOLTIP COMPONENT
+    // ════════════════════════════════════════════
+    const DayTooltip = () => {
+        if(!tooltip.visible) return null;
+        const ds_scheds = byDate[tooltip.date]||[];
+        if(!ds_scheds.length) return null;
+        const totalNodes = ds_scheds.reduce((acc,s)=>acc+(s.nodes?.length||0),0);
+
+        return (
+            <div
+                className="day-tooltip"
+                style={{ left: tooltip.x, top: tooltip.y, transform: 'translateX(-50%)' }}
+            >
+                <div className="tt-date">{formatDate(tooltip.date)}</div>
+                {ds_scheds.map((s,i) => {
+                    const isPast = s.date < TODAY_STR && s.status==='PENDIENTE';
+                    const delay  = calcDelay(s.date, s.status);
+                    const scls   = ttStatusClass(s.status, isPast);
+                    const hex    = getZoneHex(s.zoneId);
+                    const stLbl  = s.status==='COMPLETADO'?'✓ COMPLETADO':s.status==='EN EJECUCION'?'● EN EJECUCIÓN':s.status==='EN PAUSA'?'⏸ EN PAUSA':s.status==='ANULADA'?'✕ ANULADA':isPast?'⚠ VENCIDA':'○ PENDIENTE';
+                    return (
+                        <div key={s.id} className="tt-row">
+                            <div className="tt-dot" style={{background:hex,marginTop:4}} />
+                            <div style={{flex:1}}>
+                                <div style={{fontSize:'.6rem',fontWeight:800,color:'rgba(255,255,255,.7)',marginBottom:3,letterSpacing:'.06em'}}>{getZoneName(s.zoneId)}</div>
+                                <div style={{display:'flex',flexWrap:'wrap',gap:'3px',marginBottom:4}}>
+                                    {s.nodes.map(nId=>(
+                                        <span key={nId} style={{fontFamily:"'JetBrains Mono',monospace",fontSize:'.6rem',fontWeight:600,background:'rgba(255,255,255,.08)',padding:'2px 7px',borderRadius:5,color:'#e2e8f0'}}>{getNodeName(nId)}</span>
+                                    ))}
+                                </div>
+                                <span className={`tt-status ${scls}`}>{stLbl}</span>
+                                {delay>0 && <span className="tt-delay">{delay} DÍA{delay!==1?'S':''} DE RETRASO</span>}
+                                {s.odt && <span style={{fontSize:'.55rem',fontWeight:800,color:'#c4b5fd',background:'rgba(168,85,247,.15)',padding:'2px 7px',borderRadius:5,marginTop:3,display:'inline-block'}}>ODT: {s.odt}</span>}
+                            </div>
+                        </div>
+                    );
+                })}
+                <div className="tt-cap">
+                    {totalNodes}/5 NODOS AGENDADOS · {5-totalNodes} DISPONIBLE{5-totalNodes!==1?'S':''}
+                </div>
+            </div>
+        );
+    };
+
+    // ════════════════════════════════════════════
+    // SCHEDULE CARD COMPONENT
+    // ════════════════════════════════════════════
+    const SchCard = ({sch}) => {
+        const isCompleted = sch.status==='COMPLETADO';
+        const isExecuting = sch.status==='EN EJECUCION';
+        const isPaused    = sch.status==='EN PAUSA';
+        const isCancelled = sch.status==='ANULADA';
+        const isPending   = sch.status==='PENDIENTE';
+        const schDate     = new Date(sch.date+'T00:00:00Z');
+        const isPast      = schDate < todayMidnight() && isPending;
+        const delay       = calcDelay(sch.date, sch.status);
+        const zColor      = getZoneColor(sch.zoneId);
+        const sCls        = statusClass(sch.status, isPast);
+        const bCls        = badgeClass(sch.status, isPast);
+        const sLbl        = statusLabel(sch.status, isPast, delay);
+        const isBeingActioned = actionP.id === sch.id;
+        const isBeingEdited   = editP.id   === sch.id;
+        const canEdit = isExecuting || isPaused || isCompleted;
+
+        return (
+            <div className={`sch-card ${sCls}`}>
+                {/* Row 1: badges */}
+                <div style={{display:'flex',flexWrap:'wrap',gap:7,alignItems:'center',marginBottom:12}}>
+                    <span className={`badge ${bCls}`}>{sLbl}</span>
+                    {delay > 0 && <span className="badge b-delay"><ClockIco /> {delay}D RETRASO</span>}
+                    <div className="zone-chip">
+                        <span className={`zdot ${isCancelled?'bg-red-200':zColor}`} />
+                        <span style={isCancelled?{textDecoration:'line-through',opacity:.5}:{}}>{getZoneName(sch.zoneId)}</span>
+                    </div>
+                    {sch.odt && <span className="badge b-odt"><OdtIco /> ODT: {sch.odt}</span>}
+                    {sch.isRecurring && <span className="badge b-recurring"><RepeatIco /> CADA {sch.repeatDays}D</span>}
+                </div>
+
+                {/* Row 2: nodes */}
+                <div className={`node-box${isCancelled?' opacity-50':''}`} style={{marginBottom:10}}>
+                    <div className="node-box-lbl">NODOS A INTERVENIR</div>
+                    <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
+                        {sch.nodes.map(nId=><span key={nId} className="node-tag">{getNodeName(nId)}</span>)}
+                    </div>
+                </div>
+
+                {/* Reason */}
+                {sch.reason && (
+                    <div className={`reason-box ${isCancelled?'reason-cancelled':'reason-paused'}`} style={{marginBottom:10}}>
+                        MOTIVO: {sch.reason}
+                    </div>
+                )}
+
+                {/* Techs */}
+                {sch.techs && !isCancelled && (
+                    <div className="tech-chip" style={{marginBottom:10}}>
+                        <UserIco />
+                        TÉCNICOS: <strong>{sch.techs}</strong>
+                    </div>
+                )}
+
+                {/* Action buttons */}
+                {!isBeingActioned && !isBeingEdited && (
+                    <div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:4}}>
+                        {isPending && <>
+                            <button onClick={()=>triggerAction(sch.id,'START',sch)} className="btn btn-start"><PlayIco /> INICIAR</button>
+                            <button onClick={()=>triggerAction(sch.id,'PAUSE',sch)} className="btn btn-pause"><PauseIco /> PAUSAR</button>
+                            <button onClick={()=>triggerAction(sch.id,'CANCEL',sch)} className="btn btn-cancel"><BanIco /> ANULAR</button>
+                        </>}
+                        {isExecuting && <>
+                            <button onClick={()=>handleStatusChange(sch,'COMPLETADO')} className="btn btn-complete"><CheckIco /> COMPLETAR</button>
+                            <button onClick={()=>triggerAction(sch.id,'PAUSE',sch)} className="btn btn-pause"><PauseIco /> PAUSAR</button>
+                            <button onClick={()=>triggerAction(sch.id,'CANCEL',sch)} className="btn btn-cancel"><BanIco /> ANULAR</button>
+                        </>}
+                        {isPaused && <>
+                            <button onClick={()=>handleStatusChange(sch,'EN EJECUCION')} className="btn btn-resume"><PlayIco /> REANUDAR</button>
+                            <button onClick={()=>triggerAction(sch.id,'CANCEL',sch)} className="btn btn-cancel"><BanIco /> ANULAR</button>
+                        </>}
+                        {(isCancelled||isCompleted) && (
+                            <button onClick={()=>handleStatusChange(sch,'PENDIENTE')} className="btn btn-reopen">↺ REABRIR</button>
+                        )}
+                        {/* Edit button for active/paused/completed */}
+                        {canEdit && (
+                            <button onClick={()=>triggerEdit(sch)} className="btn btn-edit"><EditIco /> EDITAR INFO</button>
+                        )}
+                        {isAdmin && (
+                            <button onClick={()=>promptDelete(sch)} className="btn btn-delete" style={{marginLeft:'auto'}}><TrashIco /></button>
+                        )}
+                    </div>
+                )}
+
+                {/* START prompt (techs + ODT) */}
+                {isBeingActioned && actionP.type==='START' && (
+                    <div className="prompt-box" style={{marginTop:12}}>
+                        <div className="prompt-lbl" style={{color:'var(--primary)'}}>ASIGNAR TÉCNICOS Y ORDEN DE TRABAJO</div>
+                        <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                                <input
+                                    autoFocus
+                                    className="prompt-inp"
+                                    style={{flex:2,minWidth:'140px'}}
+                                    placeholder="TÉCNICOS (EJ: L. RAMOS, D. CHACÍN)"
+                                    value={actionP.techs}
+                                    onChange={e=>setActionP({...actionP,techs:e.target.value})}
+                                />
+                                <input
+                                    className="prompt-inp odt"
+                                    style={{flex:1,minWidth:'100px'}}
+                                    placeholder="ODT Nº (OPCIONAL)"
+                                    value={actionP.odt}
+                                    onChange={e=>setActionP({...actionP,odt:e.target.value})}
+                                />
+                            </div>
+                            <div style={{display:'flex',gap:6}}>
+                                <button onClick={()=>setActionP({id:null,type:null,techs:'',odt:'',reason:''})} className="btn btn-reopen">CANCELAR</button>
+                                <button onClick={submitAction} className="btn btn-start">GUARDAR E INICIAR</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* PAUSE / CANCEL prompt */}
+                {isBeingActioned && (actionP.type==='PAUSE'||actionP.type==='CANCEL') && (
+                    <div className="prompt-box" style={{marginTop:12}}>
+                        <div className="prompt-lbl" style={{color:actionP.type==='PAUSE'?'#92400e':'#991b1b'}}>
+                            {actionP.type==='PAUSE'?'MOTIVO DE PAUSA':'MOTIVO DE ANULACIÓN'} (OBLIGATORIO)
+                        </div>
+                        <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                            <input
+                                autoFocus
+                                className="prompt-inp"
+                                style={{flex:1,minWidth:'160px'}}
+                                placeholder="EJ: LLUVIA, FALTA MATERIAL..."
+                                value={actionP.reason}
+                                onChange={e=>setActionP({...actionP,reason:e.target.value})}
+                                onKeyDown={e=>e.key==='Enter'&&submitAction()}
+                            />
+                            <div style={{display:'flex',gap:6}}>
+                                <button onClick={()=>setActionP({id:null,type:null,techs:'',odt:'',reason:''})} className="btn btn-reopen">CANCELAR</button>
+                                <button onClick={submitAction} className={`btn ${actionP.type==='PAUSE'?'btn-pause':'btn-cancel'}`}>GUARDAR</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* EDIT prompt */}
+                {isBeingEdited && (
+                    <div className="prompt-box edit-mode" style={{marginTop:12}}>
+                        <div className="prompt-lbl" style={{color:'#6b21a8'}}>EDITAR TÉCNICOS Y ODT</div>
+                        <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                                <input
+                                    autoFocus
+                                    className="prompt-inp"
+                                    style={{flex:2,minWidth:'140px'}}
+                                    placeholder="TÉCNICOS"
+                                    value={editP.techs}
+                                    onChange={e=>setEditP({...editP,techs:e.target.value})}
+                                />
+                                <input
+                                    className="prompt-inp odt"
+                                    style={{flex:1,minWidth:'100px'}}
+                                    placeholder="ODT Nº"
+                                    value={editP.odt}
+                                    onChange={e=>setEditP({...editP,odt:e.target.value})}
+                                />
+                            </div>
+                            <div style={{display:'flex',gap:6}}>
+                                <button onClick={()=>setEditP({id:null,techs:'',odt:''})} className="btn btn-reopen">CANCELAR</button>
+                                <button onClick={submitEdit} className="btn btn-edit"><EditIco /> GUARDAR CAMBIOS</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    // ════════════════════════════════════════════
+    // LOADING
+    // ════════════════════════════════════════════
+    if(loading) return (
+        <div className="loading-screen">
+            <div style={{position:'relative',marginBottom:8}}>
+                <div className="load-ring" />
+                <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--primary)'}}>
+                    <ToolIco c="h-7 w-7" />
+                </div>
+            </div>
+            <div style={{color:'rgba(255,255,255,.8)',fontSize:'.9rem',fontWeight:900,letterSpacing:'.05em'}}>AIRTEK</div>
+            <div style={{color:'rgba(255,255,255,.3)',fontSize:'.6rem',fontWeight:800,letterSpacing:'.2em',animation:'pulse-g 2s infinite'}}>CONECTANDO…</div>
+        </div>
+    );
+
+    // ════════════════════════════════════════════
+    // MAIN RENDER
+    // ════════════════════════════════════════════
+    return (
+        <div style={{minHeight:'100vh',paddingBottom:96}}>
+            <DayTooltip />
+
+            {/* ── HEADER ── */}
+            <header className="app-header" style={{padding:'14px 20px'}}>
+                <div style={{maxWidth:740,margin:'0 auto',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                    <div style={{display:'flex',alignItems:'center',gap:14}}>
+                        <div className="logo-ring"><ToolIco c="h-6 w-6" /></div>
+                        <div>
+                            <div style={{display:'flex',alignItems:'center',gap:8}}>
+                                <span className="header-title">Airtek</span>
+                                <span className="header-badge">PREVENTIVO</span>
+                            </div>
+                            <div style={{display:'flex',alignItems:'center',gap:6,marginTop:3}}>
+                                <span className={`status-dot ${isCloud?'online':'offline'}`} />
+                                <span className={`status-lbl ${isCloud?'online-lbl':'offline-lbl'}`}>{isCloud?'SISTEMA ONLINE':'OFFLINE'}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <button onClick={()=>setIsAdmin(!isAdmin)} className={`mode-btn ${isAdmin?'mode-active':'mode-inactive'}`}>
+                        {isAdmin ? '✎ EDITOR' : '◉ LECTURA'}
+                    </button>
+                </div>
+            </header>
+
+            <div style={{maxWidth:740,margin:'0 auto',padding:'18px 14px',display:'flex',flexDirection:'column',gap:16}}>
+
+                {/* ── STATS BAR ── */}
+                <div className="stats-bar">
+                    {[
+                        {cls:'stat-pending',   num:stats.pending,   lbl:'PENDIENTES'},
+                        {cls:'stat-executing', num:stats.executing, lbl:'EN EJECUCIÓN'},
+                        {cls:'stat-overdue',   num:stats.overdue,   lbl:'VENCIDAS'},
+                        {cls:'stat-done',      num:stats.done,      lbl:'COMPLETADAS'},
+                    ].map(s=>(
+                        <div key={s.lbl} className={`stat-card ${s.cls}`}>
+                            <div className="stat-num">{s.num}</div>
+                            <div className="stat-lbl">{s.lbl}</div>
+                        </div>
+                    ))}
+                </div>
+
+                {/* ── TABS ── */}
+                <nav className="tab-nav no-scroll">
+                    {[
+                        {id:'cronograma',label:'CALENDARIO'},
+                        {id:'programar', label:'PROGRAMAR PM'},
+                        {id:'historial', label:'HISTORIAL'},
+                        {id:'maestro',   label:'ZONAS / NODOS'}
+                    ].map(t=>(
+                        <button key={t.id} onClick={()=>setActiveTab(t.id)} className={`tab-btn ${activeTab===t.id?'tab-active':'tab-inactive'}`}>{t.label}</button>
+                    ))}
+                </nav>
+
+                {/* ── CONTENT ── */}
+                <main className="tab-content" style={{display:'flex',flexDirection:'column',gap:14}}>
+
+                    {/* ────── CALENDARIO ────── */}
+                    {activeTab==='cronograma' && (
+                        <>
+                            {/* Filter + Today bar */}
+                            <div className="filter-bar">
+                                <span className="filter-lbl">FILTRAR:</span>
+                                <select className="filter-select" value={filterZone} onChange={e=>setFilterZone(e.target.value)}>
+                                    <option value="">TODAS LAS ZONAS</option>
+                                    {zones.map(z=><option key={z.id} value={z.id}>{z.name}</option>)}
+                                </select>
+                                <select className="filter-select" value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}>
+                                    <option value="">TODOS LOS ESTADOS</option>
+                                    <option value="PENDIENTE">PENDIENTE</option>
+                                    <option value="EN EJECUCION">EN EJECUCIÓN</option>
+                                    <option value="EN PAUSA">EN PAUSA</option>
+                                    <option value="COMPLETADO">COMPLETADO</option>
+                                    <option value="ANULADA">ANULADA</option>
+                                </select>
+                                {(filterZone||filterStatus) && (
+                                    <button className="filter-clear" onClick={()=>{setFilterZone('');setFilterStatus('');}}>✕ LIMPIAR</button>
+                                )}
+                                <button className="today-btn" onClick={goToday} style={{marginLeft:'auto'}}>⊙ HOY</button>
+                            </div>
+
+                            <Calendar />
+
+                            {/* Day detail */}
+                            <div>
+                                <div className="sec-title" style={{marginBottom:12}}>
+                                    {selDate ? formatDate(selDate) : 'SELECCIONE UN DÍA'}
+                                </div>
+                                {daySchedules.length===0 ? (
+                                    <div className="card">
+                                        <div className="empty">
+                                            <div className="empty-ico">
+                                                <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+                                            </div>
+                                            <div className="empty-txt">
+                                                {filterZone||filterStatus ? 'SIN RESULTADOS CON ESTOS FILTROS' : 'DÍA LIBRE · SIN MANTENIMIENTOS'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                                        {/* Day summary chip */}
+                                        <div style={{display:'flex',gap:8,flexWrap:'wrap',paddingLeft:2}}>
+                                            <span style={{fontSize:'.6rem',fontWeight:800,letterSpacing:'.1em',color:'var(--muted)'}}>
+                                                {daySchedules.length} INSPECC. · {daySchedules.reduce((acc,s)=>acc+(s.nodes?.length||0),0)}/5 NODOS
+                                            </span>
+                                        </div>
+                                        {daySchedules.map(sch=><SchCard key={sch.id} sch={sch} />)}
+                                    </div>
+                                )}
+                            </div>
+                        </>
+                    )}
+
+                    {/* ────── PROGRAMAR ────── */}
+                    {activeTab==='programar' && (
+                        <form onSubmit={handleSaveSchedule} className="card card-xl" style={{padding:'26px',display:'flex',flexDirection:'column',gap:16}}>
+                            <div style={{textAlign:'center',paddingBottom:14,borderBottom:'1px solid var(--border)'}}>
+                                <div style={{fontSize:'.75rem',fontWeight:900,color:'var(--primary)',letterSpacing:'.08em',marginBottom:4}}>PROGRAMAR MANTENIMIENTO</div>
+                                <div style={{fontSize:'.58rem',fontWeight:700,color:'var(--muted)',letterSpacing:'.12em'}}>MÁX 5 NODOS / DÍA · FIN DE SEMANA → LUNES</div>
+                            </div>
+
+                            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                                <div className="form-group">
+                                    <label className="form-lbl">FECHA BASE</label>
+                                    <input required type="date" className="form-inp" value={newSch.date} onChange={e=>setNewSch({...newSch,date:e.target.value})} />
+                                </div>
+                                <div className="form-group">
+                                    <label className="form-lbl">ZONA</label>
+                                    <select required className="form-sel" value={newSch.zoneId} onChange={e=>setNewSch({...newSch,zoneId:e.target.value,selectedNodes:[]})}>
+                                        <option value="">ELEGIR ZONA…</option>
+                                        {zones.map(z=><option key={z.id} value={z.id}>{z.name}</option>)}
+                                    </select>
                                 </div>
                             </div>
-                            <button onClick={() => setIsAdminMode(!isAdminMode)} className={`text-[9px] px-2 py-1 rounded-full font-black tracking-wider transition-colors ${isAdminMode ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-100 text-slate-400'}`}>{isAdminMode ? 'MODO EDITOR' : 'VISTA LECTURA'}</button>
-                        </div>
-                    </header>
 
-                    <div className="max-w-3xl mx-auto p-4 space-y-6 mt-4">
-                        <nav className="flex gap-1.5 bg-white p-1.5 rounded-3xl shadow-premium border border-slate-100 overflow-x-auto no-scrollbar">
-                            {[
-                                {id: 'cronograma', label: 'CALENDARIO'}, 
-                                {id: 'programar', label: 'PROGRAMAR PM'}, 
-                                {id: 'historial', label: 'HISTORIAL'}, 
-                                {id: 'maestro', label: 'ZONAS/NODOS'}
-                            ].map(t => (
-                                <button key={t.id} onClick={() => setActiveTab(t.id)} className={`flex-1 min-w-[100px] py-3 px-2 rounded-2xl font-black text-[10px] tracking-wider transition-all whitespace-nowrap ${activeTab === t.id ? 'bg-teal-600 text-white shadow-lg' : 'text-slate-400 hover:text-teal-500 hover:bg-slate-50'}`}>{t.label}</button>
-                            ))}
-                        </nav>
+                            {newSch.zoneId && (
+                                <div className="node-sel-box">
+                                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+                                        <label style={{fontSize:'.6rem',fontWeight:900,letterSpacing:'.12em',color:'var(--primary)'}}>NODOS A INTERVENIR</label>
+                                        <span style={{fontSize:'.6rem',fontWeight:800,padding:'3px 10px',borderRadius:999,background:newSch.selectedNodes.length>=5?'#fff7ed':'#f1f5f9',color:newSch.selectedNodes.length>=5?'#c2410c':'#475569',border:`1px solid ${newSch.selectedNodes.length>=5?'#fed7aa':'#e2e8f0'}`}}>
+                                            {newSch.selectedNodes.length}/5
+                                        </span>
+                                    </div>
+                                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:7}}>
+                                        {nodesInZone.map(n=>{
+                                            const isSel = newSch.selectedNodes.includes(n.id);
+                                            const isMax = newSch.selectedNodes.length>=5 && !isSel;
+                                            return (
+                                                <label key={n.id} className={`node-sel-lbl ${isSel?'nsl-sel':''} ${isMax?'nsl-dis':''}`}>
+                                                    <input type="checkbox" className="chk" disabled={isMax} checked={isSel} onChange={()=>toggleNode(n.id)} />
+                                                    <span style={{fontSize:'.68rem',fontWeight:800,color:isSel?'var(--primary-d)':'#334155'}}>{n.name}</span>
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
 
-                        <main className="tab-content">
+                            <div className="recur-box">
+                                <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer'}}>
+                                    <input type="checkbox" className="chk" checked={newSch.recurring} onChange={e=>setNewSch({...newSch,recurring:e.target.checked})} />
+                                    <span style={{fontSize:'.68rem',fontWeight:800,color:'#0f766e',letterSpacing:'.08em'}}>PROGRAMAR RECURRENTE (1 AÑO)</span>
+                                </label>
+                                {newSch.recurring && (
+                                    <div className="form-group" style={{marginTop:12}}>
+                                        <label className="form-lbl" style={{color:'#0f766e'}}>REPETIR CADA (DÍAS)</label>
+                                        <input type="number" className="form-inp" style={{background:'#fff',borderColor:'#a7f3d0'}} value={newSch.repeatDays} min="1" onChange={e=>setNewSch({...newSch,repeatDays:e.target.value})} />
+                                        <span style={{fontSize:'.58rem',fontWeight:700,color:'#0f766e',fontStyle:'italic',marginTop:4}}>GENERARÁ CITAS AUTOMÁTICAMENTE POR 1 AÑO.</span>
+                                    </div>
+                                )}
+                            </div>
 
-                            {/* --- TAB: CALENDARIO --- */}
-                            {activeTab === 'cronograma' && (
-                                <div className="space-y-6">
-                                    {renderCalendar()}
+                            <div style={{fontSize:'.58rem',fontWeight:700,color:'var(--muted)',textAlign:'center',fontStyle:'italic'}}>
+                                * TÉCNICOS Y ODT SE ASIGNAN AL INICIAR CADA TAREA EN EL CALENDARIO.
+                            </div>
 
-                                    <div className="space-y-4">
-                                        <h3 className="text-[11px] font-black text-slate-500 px-4 border-l-4 border-teal-500 ml-2">
-                                            {selectedDateDetails ? `DETALLES: ${formatDate(selectedDateDetails)}` : 'SELECCIONE UN DÍA'}
-                                        </h3>
-                                        
-                                        {selectedDateDetails && (
-                                            schedules.filter(s => s.date === selectedDateDetails).length === 0 ? (
-                                                <div className="text-center p-8 bg-white rounded-[2rem] border border-slate-100 shadow-sm">
-                                                    <p className="text-[10px] font-black text-slate-400 tracking-widest">DÍA LIBRE DE MANTENIMIENTO</p>
-                                                </div>
+                            <button type="submit" className="btn btn-full">AGENDAR FECHAS</button>
+                        </form>
+                    )}
+
+                    {/* ────── HISTORIAL ────── */}
+                    {activeTab==='historial' && (
+                        <>
+                            <div className="card" style={{padding:'18px 22px',display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap'}}>
+                                <div>
+                                    <div style={{fontSize:'.75rem',fontWeight:900,letterSpacing:'.06em'}}>HISTORIAL DE EJECUCIÓN</div>
+                                    <div style={{fontSize:'.6rem',fontWeight:700,color:'var(--muted)',marginTop:3,letterSpacing:'.1em'}}>{schedules.filter(s=>s.status==='COMPLETADO').length} MANTENIMIENTOS COMPLETADOS</div>
+                                </div>
+                                <button onClick={exportPDF} className="btn btn-dark" style={{gap:7}}><PdfIco /> EXPORTAR PDF</button>
+                            </div>
+                            <div className="card" style={{overflow:'hidden'}}>
+                                <div style={{overflowX:'auto'}}>
+                                    <table className="hist-tbl">
+                                        <thead>
+                                            <tr>
+                                                <th>FECHA</th>
+                                                <th>ODT</th>
+                                                <th>ZONA</th>
+                                                <th>NODOS</th>
+                                                <th>TÉCNICOS</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {schedules.filter(s=>s.status==='COMPLETADO').length===0 ? (
+                                                <tr><td colSpan="5" style={{textAlign:'center',padding:40,color:'var(--muted)',fontSize:'.63rem',fontWeight:800,letterSpacing:'.12em'}}>AÚN NO HAY MANTENIMIENTOS FINALIZADOS</td></tr>
                                             ) : (
-                                                <div className="space-y-4">
-                                                    {schedules.filter(s => s.date === selectedDateDetails).map(sch => {
-                                                        const isCompleted = sch.status === 'COMPLETADO';
-                                                        const isExecuting = sch.status === 'EN EJECUCION';
-                                                        const isPaused = sch.status === 'EN PAUSA';
-                                                        const isCancelled = sch.status === 'ANULADA';
-                                                        const isPending = sch.status === 'PENDIENTE';
-                                                        
-                                                        const scheduleDate = new Date(sch.date + 'T00:00:00Z');
-                                                        const isPast = scheduleDate < new Date(new Date().setHours(0,0,0,0)) && isPending;
-                                                        
-                                                        const zColor = getZoneColor(sch.zoneId);
-
-                                                        let borderStyle = 'border-l-orange-400';
-                                                        if (isCompleted) borderStyle = 'border-l-teal-500 opacity-70';
-                                                        else if (isExecuting) borderStyle = 'border-l-blue-500 pulse-executing';
-                                                        else if (isPaused) borderStyle = 'border-l-amber-400';
-                                                        else if (isCancelled) borderStyle = 'border-l-red-500 opacity-80';
-                                                        else if (isPast) borderStyle = 'border-l-red-400';
-
-                                                        return (
-                                                            <div key={sch.id} className={`bg-white p-5 rounded-[2rem] shadow-sm border-l-4 flex flex-col gap-4 transition-all ${borderStyle}`}>
-                                                                
-                                                                <div className="flex flex-col sm:flex-row gap-4 justify-between">
-                                                                    <div className="space-y-3 flex-1">
-                                                                        <div className="flex items-center gap-2 flex-wrap">
-                                                                            <span className={`text-[9px] px-2 py-1 rounded font-black tracking-widest ${
-                                                                                isCompleted ? 'bg-teal-100 text-teal-700' : 
-                                                                                isExecuting ? 'bg-blue-100 text-blue-700' : 
-                                                                                isPaused ? 'bg-amber-100 text-amber-800' : 
-                                                                                isCancelled ? 'bg-red-100 text-red-800' : 
-                                                                                isPast ? 'bg-red-50 text-red-600' : 'bg-orange-100 text-orange-700'
-                                                                            }`}>
-                                                                                {sch.status}
-                                                                            </span>
-                                                                            <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded border border-slate-100">
-                                                                                <span className={`w-2 h-2 rounded-full ${isCancelled ? 'bg-red-200' : zColor}`}></span>
-                                                                                <span className={`text-[10px] font-black tracking-wider ${isCancelled ? 'text-slate-400 line-through' : 'text-slate-600'}`}>
-                                                                                    {getZoneName(sch.zoneId)}
-                                                                                </span>
-                                                                            </div>
-                                                                            {sch.isRecurring && (
-                                                                                <span className="text-[9px] font-black text-blue-500 bg-blue-50 px-2 py-1 rounded flex items-center gap-1">
-                                                                                    REPETITIVO: CADA {sch.repeatDays} DÍAS
-                                                                                </span>
-                                                                            )}
-                                                                        </div>
-                                                                        
-                                                                        <div className={`text-[11px] font-bold leading-relaxed bg-slate-50 p-3 rounded-xl ${isCancelled ? 'opacity-50' : 'text-slate-600'}`}>
-                                                                            <span className="text-slate-900 font-black block mb-1 text-[9px] tracking-widest text-teal-600">NODOS A INTERVENIR:</span>
-                                                                            <div className="flex flex-wrap gap-1">
-                                                                                {sch.nodes.map(nId => (
-                                                                                    <span key={nId} className="bg-white border border-slate-200 px-2 py-1 rounded-md shadow-sm text-[10px]">{getNodeName(nId)}</span>
-                                                                                ))}
-                                                                            </div>
-                                                                        </div>
-
-                                                                        {sch.reason && (
-                                                                            <div className={`text-[9px] font-black p-2 rounded-lg ${isCancelled ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-700'}`}>
-                                                                                MOTIVO: {sch.reason}
-                                                                            </div>
-                                                                        )}
-
-                                                                        <div className="flex flex-wrap gap-2">
-                                                                            {sch.techs && !isCancelled && (
-                                                                                <div className="text-[9px] text-slate-500 font-black flex items-center gap-1.5 bg-slate-100 p-2 rounded-lg">
-                                                                                    <svg className="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
-                                                                                    TÉCNICOS: <span className="text-slate-800">{sch.techs}</span>
-                                                                                </div>
-                                                                            )}
-                                                                            {sch.odt && !isCancelled && (
-                                                                                <div className="text-[9px] font-black flex items-center gap-1.5 bg-indigo-50 text-indigo-700 p-2 rounded-lg border border-indigo-100">
-                                                                                    <svg className="w-3 h-3 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                                                                                    ODT: <span className="text-indigo-900">{sch.odt}</span>
-                                                                                </div>
-                                                                            )}
-                                                                        </div>
-                                                                    </div>
-
-                                                                    <div className="flex flex-row sm:flex-col gap-1.5 shrink-0 justify-center flex-wrap">
-                                                                        {isPending && actionPrompt.id !== sch.id && (
-                                                                            <>
-                                                                                <button onClick={() => triggerActionPrompt(sch.id, 'START')} className="flex-1 sm:flex-none px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-[9px] font-black tracking-widest shadow-md transition-colors">INICIAR</button>
-                                                                                <button onClick={() => triggerActionPrompt(sch.id, 'PAUSE')} className="flex-1 sm:flex-none px-3 py-2 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-xl text-[9px] font-black tracking-widest transition-colors">PAUSAR</button>
-                                                                                <button onClick={() => triggerActionPrompt(sch.id, 'CANCEL')} className="flex-1 sm:flex-none px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-[9px] font-black tracking-widest transition-colors">ANULAR</button>
-                                                                            </>
-                                                                        )}
-
-                                                                        {isExecuting && actionPrompt.id !== sch.id && (
-                                                                            <>
-                                                                                <button onClick={() => handleStatusChange(sch, 'COMPLETADO')} className="flex-1 sm:flex-none px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[9px] font-black tracking-widest shadow-md transition-colors">COMPLETAR</button>
-                                                                                <button onClick={() => triggerActionPrompt(sch.id, 'PAUSE')} className="flex-1 sm:flex-none px-3 py-2 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-xl text-[9px] font-black tracking-widest transition-colors">PAUSAR</button>
-                                                                                <button onClick={() => triggerActionPrompt(sch.id, 'CANCEL')} className="flex-1 sm:flex-none px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-[9px] font-black tracking-widest transition-colors">ANULAR</button>
-                                                                            </>
-                                                                        )}
-
-                                                                        {isPaused && actionPrompt.id !== sch.id && (
-                                                                            <>
-                                                                                <button onClick={() => handleStatusChange(sch, 'EN EJECUCION')} className="flex-1 sm:flex-none px-3 py-2 bg-teal-600 text-white rounded-xl text-[9px] font-black tracking-widest shadow-md">REANUDAR</button>
-                                                                                <button onClick={() => triggerActionPrompt(sch.id, 'CANCEL')} className="flex-1 sm:flex-none px-3 py-2 bg-red-50 text-red-600 rounded-xl text-[9px] font-black tracking-widest">ANULAR</button>
-                                                                            </>
-                                                                        )}
-
-                                                                        {(isCancelled || isCompleted) && actionPrompt.id !== sch.id && (
-                                                                            <button onClick={() => handleStatusChange(sch, 'PENDIENTE')} className="flex-1 sm:flex-none px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-[9px] font-black tracking-widest transition-colors">
-                                                                                REABRIR TAREA
-                                                                            </button>
-                                                                        )}
-
-                                                                        {isAdminMode && actionPrompt.id !== sch.id && (
-                                                                            <button onClick={() => promptDeleteSchedule(sch)} className="flex-1 sm:flex-none p-2 bg-red-50 hover:bg-red-100 text-red-500 rounded-xl flex items-center justify-center transition-colors">
-                                                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                                                            </button>
-                                                                        )}
-                                                                    </div>
-                                                                </div>
-
-                                                                {/* Prompts para textos (Técnicos, ODT o Motivos) */}
-                                                                {actionPrompt.id === sch.id && (
-                                                                    <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl mt-2 animate-in slide-in-from-top-2">
-                                                                        <label className={`text-[9px] font-black tracking-widest block mb-2 ${actionPrompt.type === 'START' ? 'text-teal-600' : 'text-slate-500'}`}>
-                                                                            {actionPrompt.type === 'START' ? 'DATOS DE INICIO DE INSPECCIÓN' : 'INDIQUE EL MOTIVO (OBLIGATORIO)'}
-                                                                        </label>
-                                                                        
-                                                                        <div className="flex flex-col gap-2">
-                                                                            <div className="flex flex-col sm:flex-row gap-2">
-                                                                                <input 
-                                                                                    autoFocus
-                                                                                    className="flex-1 p-3 bg-white rounded-xl text-[11px] font-black outline-none border border-slate-200 focus:border-teal-400" 
-                                                                                    placeholder={actionPrompt.type === 'START' ? 'TÉCNICOS (EJ: L. RAMOS, D. CHACÍN)' : 'EJ: LLUVIA, FALTA MATERIAL...'}
-                                                                                    value={actionPrompt.text}
-                                                                                    onChange={(e) => setActionPrompt({...actionPrompt, text: e.target.value})}
-                                                                                />
-                                                                                {actionPrompt.type === 'START' && (
-                                                                                    <input 
-                                                                                        className="flex-1 sm:max-w-[200px] p-3 bg-white rounded-xl text-[11px] font-black outline-none border border-slate-200 focus:border-teal-400" 
-                                                                                        placeholder="Nº ODT ODOO (OPCIONAL)"
-                                                                                        value={actionPrompt.odt}
-                                                                                        onChange={(e) => setActionPrompt({...actionPrompt, odt: e.target.value})}
-                                                                                    />
-                                                                                )}
-                                                                            </div>
-                                                                            <div className="flex gap-2 justify-end mt-1">
-                                                                                <button onClick={() => setActionPrompt({id: null, type: null, text: '', odt: ''})} className="px-4 py-3 bg-slate-200 text-slate-600 rounded-xl text-[10px] font-black tracking-widest">CANCELAR</button>
-                                                                                <button onClick={submitActionPrompt} className={`px-4 py-3 text-white rounded-xl text-[10px] font-black tracking-widest shadow-md ${actionPrompt.type === 'START' ? 'bg-teal-600' : (actionPrompt.type === 'PAUSE' ? 'bg-amber-500' : 'bg-red-500')}`}>
-                                                                                    GUARDAR
-                                                                                </button>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            )
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* --- TAB: PROGRAMAR --- */}
-                            {activeTab === 'programar' && (
-                                <form onSubmit={handleSaveSchedule} className="bg-white p-8 rounded-[2.5rem] shadow-premium border border-slate-100 space-y-6">
-                                    <div className="text-center uppercase space-y-1">
-                                        <h3 className="text-sm font-black text-teal-700">PROGRAMAR MANTENIMIENTO</h3>
-                                        <p className="text-[9px] text-slate-400 tracking-widest font-bold">MÁXIMO 5 NODOS POR DÍA | FINES DE SEMANA SALTAN AL LUNES</p>
-                                    </div>
-                                    
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div className="space-y-1">
-                                            <label className="text-[8px] text-slate-400 ml-2 uppercase font-black">FECHA BASE</label>
-                                            <input required type="date" className="w-full p-4 bg-slate-50 rounded-2xl text-[12px] font-black outline-none border-2 border-transparent focus:border-teal-200" value={newSchedule.date} onChange={e=>setNewSchedule({...newSchedule, date: e.target.value})} />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[8px] text-slate-400 ml-2 uppercase font-black">SELECCIONE LA ZONA</label>
-                                            <select required className="w-full p-4 bg-slate-50 rounded-2xl text-[11px] font-black border-2 border-transparent outline-none focus:border-teal-200 appearance-none" value={newSchedule.zoneId} onChange={e=>setNewSchedule({...newSchedule, zoneId: e.target.value, selectedNodes: []})}>
-                                                <option value="">ELEGIR ZONA...</option>
-                                                {zones.map(z => <option key={z.id} value={z.id}>{z.name}</option>)}
-                                            </select>
-                                        </div>
-                                    </div>
-
-                                    {newSchedule.zoneId && (
-                                        <div className="space-y-2 bg-slate-50 p-5 rounded-3xl border border-slate-100">
-                                            <div className="flex justify-between items-end mb-3">
-                                                <label className="text-[9px] text-teal-600 uppercase font-black tracking-widest block">NODOS A INTERVENIR (MÁX 5)</label>
-                                                <span className={`text-[9px] font-black px-2 py-1 rounded-md ${newSchedule.selectedNodes.length === 5 ? 'bg-orange-100 text-orange-600' : 'bg-slate-200 text-slate-600'}`}>
-                                                    SELECCIONADOS: {newSchedule.selectedNodes.length}/5
-                                                </span>
-                                            </div>
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                                {nodesInSelectedZone.map(n => {
-                                                    const isSelected = newSchedule.selectedNodes.includes(n.id);
-                                                    const isMaxReached = newSchedule.selectedNodes.length >= 5 && !isSelected;
-                                                    
-                                                    return (
-                                                        <label key={n.id} className={`flex items-center gap-3 p-3 rounded-2xl transition-colors ${isSelected ? 'bg-white shadow-sm border border-teal-100' : 'bg-white border border-transparent'} ${isMaxReached ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-slate-100'}`}>
-                                                            <input type="checkbox" className="custom-checkbox" disabled={isMaxReached} checked={isSelected} onChange={() => toggleNodeSelection(n.id)} />
-                                                            <span className={`text-[11px] font-black ${isSelected ? 'text-teal-700' : 'text-slate-600'}`}>{n.name}</span>
-                                                        </label>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    <div className="p-5 bg-teal-50 rounded-3xl border border-teal-100 space-y-4">
-                                        <label className="flex items-center gap-3 cursor-pointer">
-                                            <input type="checkbox" className="custom-checkbox" checked={newSchedule.recurring} onChange={e => setNewSchedule({...newSchedule, recurring: e.target.checked})} />
-                                            <span className="text-[10px] font-black text-teal-800">PROGRAMAR TAREA RECURRENTE (POR 1 AÑO)</span>
-                                        </label>
-                                        
-                                        {newSchedule.recurring && (
-                                            <div className="space-y-1 animate-in slide-in-from-top-2 duration-200">
-                                                <label className="text-[8px] text-teal-600 ml-2 uppercase font-black">REPETIR CADA (DÍAS)</label>
-                                                <input type="number" className="w-full p-4 bg-white rounded-2xl text-[11px] font-black outline-none border-2 border-teal-200" value={newSchedule.repeatDays} onChange={e => setNewSchedule({...newSchedule, repeatDays: e.target.value})} placeholder="EJ: 30" min="1" />
-                                                <p className="text-[8px] text-teal-400 mt-1 ml-2 font-bold italic">EL SISTEMA GENERARÁ CITAS DURANTE TODO EL AÑO AUTOMÁTICAMENTE.</p>
-                                            </div>
-                                        )}
-                                    </div>
-                                    
-                                    <div className="text-[9px] text-slate-400 font-bold italic text-center px-4">
-                                        * LOS TÉCNICOS SE ASIGNARÁN EN EL CALENDARIO AL INICIAR LA TAREA.
-                                    </div>
-
-                                    <button type="submit" className="w-full bg-teal-600 text-white p-5 rounded-3xl font-black text-[11px] tracking-widest shadow-lg shadow-teal-200">AGENDAR FECHAS</button>
-                                </form>
-                            )}
-
-                            {/* --- TAB: HISTORIAL --- */}
-                            {activeTab === 'historial' && (
-                                <div className="space-y-4">
-                                    <div className="bg-white p-6 sm:p-8 rounded-[2.5rem] shadow-premium border border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4">
-                                        <div>
-                                            <h2 className="text-sm font-black text-slate-800 tracking-widest">HISTORIAL DE EJECUCIÓN</h2>
-                                            <p className="text-[10px] text-slate-400 mt-1">MANTENIMIENTOS COMPLETADOS</p>
-                                        </div>
-                                        <button onClick={exportToPDF} className="bg-slate-900 hover:bg-slate-800 text-white px-6 py-3 rounded-2xl font-black text-[10px] tracking-widest flex items-center gap-2 transition-colors shadow-md">
-                                            <DocumentPdfIcon /> EXPORTAR PDF
-                                        </button>
-                                    </div>
-
-                                    {/* FILTROS AVANZADOS */}
-                                    <div className="bg-white p-4 sm:p-5 rounded-[2rem] shadow-sm border border-slate-100 space-y-3">
-                                        <div className="flex justify-between items-center px-1">
-                                            <h3 className="text-[10px] font-black text-slate-500 tracking-widest">FILTRAR RESULTADOS</h3>
-                                            {(historyFilterZone || historyFilterNode || historyFilterTech) && (
-                                                <button 
-                                                    onClick={() => {setHistoryFilterZone(''); setHistoryFilterNode(''); setHistoryFilterTech('');}}
-                                                    className="text-[9px] text-red-500 hover:text-red-700 font-black tracking-widest"
-                                                >
-                                                    LIMPIAR FILTROS
-                                                </button>
-                                            )}
-                                        </div>
-                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                            <select 
-                                                className="w-full p-3 bg-slate-50 rounded-xl text-[10px] font-black border border-slate-200 outline-none focus:border-teal-400 appearance-none"
-                                                value={historyFilterZone}
-                                                onChange={(e) => {setHistoryFilterZone(e.target.value); setHistoryFilterNode('');}}
-                                            >
-                                                <option value="">TODAS LAS ZONAS</option>
-                                                {zones.map(z => <option key={z.id} value={z.id}>{z.name}</option>)}
-                                            </select>
-
-                                            <select 
-                                                className="w-full p-3 bg-slate-50 rounded-xl text-[10px] font-black border border-slate-200 outline-none focus:border-teal-400 appearance-none"
-                                                value={historyFilterNode}
-                                                onChange={(e) => setHistoryFilterNode(e.target.value)}
-                                            >
-                                                <option value="">TODOS LOS NODOS</option>
-                                                {nodes
-                                                    .filter(n => historyFilterZone ? n.zoneId === historyFilterZone : true)
-                                                    .map(n => <option key={n.id} value={n.id}>{n.name}</option>)
-                                                }
-                                            </select>
-
-                                            <input 
-                                                type="text"
-                                                placeholder="BUSCAR COLABORADOR / TÉCNICO"
-                                                className="w-full p-3 bg-slate-50 rounded-xl text-[10px] font-black border border-slate-200 outline-none focus:border-teal-400"
-                                                value={historyFilterTech}
-                                                onChange={(e) => setHistoryFilterTech(e.target.value)}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden">
-                                        <div className="overflow-x-auto">
-                                            <table className="w-full text-left border-collapse">
-                                                <thead>
-                                                    <tr className="bg-slate-50 border-b border-slate-100 text-[9px] text-slate-400 tracking-widest">
-                                                        <th className="p-4 font-black">FECHA</th>
-                                                        <th className="p-4 font-black">ZONA</th>
-                                                        <th className="p-4 font-black min-w-[150px]">NODOS INTERVENIDOS</th>
-                                                        <th className="p-4 font-black">ODT (ODOO)</th>
-                                                        <th className="p-4 font-black">TÉCNICOS</th>
+                                                schedules.filter(s=>s.status==='COMPLETADO').sort((a,b)=>new Date(b.date)-new Date(a.date)).map(s=>(
+                                                    <tr key={s.id}>
+                                                        <td style={{whiteSpace:'nowrap',fontFamily:"'JetBrains Mono',monospace",fontSize:'.62rem'}}>{formatDate(s.date)}</td>
+                                                        <td>{s.odt ? <span className="badge b-odt">{s.odt}</span> : <span style={{color:'var(--muted)'}}>—</span>}</td>
+                                                        <td><div className="zone-chip"><span className={`zdot ${getZoneColor(s.zoneId)}`} />{getZoneName(s.zoneId)}</div></td>
+                                                        <td><div style={{display:'flex',flexWrap:'wrap',gap:4}}>{s.nodes.map(n=><span key={n} className="node-tag">{getNodeName(n)}</span>)}</div></td>
+                                                        <td style={{color:'var(--primary)',fontWeight:800}}>{s.techs||'NO REGISTRADO'}</td>
                                                     </tr>
-                                                </thead>
-                                                <tbody className="text-[11px] font-black text-slate-700">
-                                                    {getFilteredHistory().length === 0 ? (
-                                                        <tr>
-                                                            <td colSpan="5" className="p-8 text-center text-slate-400 font-bold text-[10px] tracking-widest">
-                                                                NO SE ENCONTRARON REGISTROS CON ESTOS FILTROS
-                                                            </td>
-                                                        </tr>
-                                                    ) : (
-                                                        getFilteredHistory().map(s => (
-                                                            <tr key={s.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
-                                                                <td className="p-4 whitespace-nowrap">{formatDate(s.date)}</td>
-                                                                <td className="p-4">
-                                                                    <div className="flex items-center gap-2">
-                                                                        <span className={`w-2 h-2 rounded-full ${getZoneColor(s.zoneId)}`}></span>
-                                                                        {getZoneName(s.zoneId)}
-                                                                    </div>
-                                                                </td>
-                                                                <td className="p-4 leading-relaxed">
-                                                                    {s.nodes.map(n => getNodeName(n)).join(', ')}
-                                                                </td>
-                                                                <td className="p-4">
-                                                                    {s.odt ? <span className="bg-indigo-50 text-indigo-700 px-2 py-1 rounded-md text-[9px] border border-indigo-100">{s.odt}</span> : <span className="text-slate-400 text-[9px]">N/A</span>}
-                                                                </td>
-                                                                <td className="p-4 text-teal-700">{s.techs || 'NO REGISTRADO'}</td>
-                                                            </tr>
-                                                        ))
-                                                    )}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
+                                                ))
+                                            )}
+                                        </tbody>
+                                    </table>
                                 </div>
-                            )}
+                            </div>
+                        </>
+                    )}
 
-                            {/* --- TAB: MAESTRO --- */}
-                            {activeTab === 'maestro' && (
-                                <div className="space-y-6">
-                                    <div className="flex justify-center gap-2 bg-slate-100 p-1 rounded-2xl">
-                                        {['zona', 'nodo'].map(type => (
-                                            <button key={type} onClick={() => setAdminSection(type)} className={`flex-1 py-3 rounded-xl text-[10px] font-black transition-all ${adminSection === type ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>
-                                                {type === 'zona' ? 'ADMINISTRAR ZONAS' : 'ADMINISTRAR NODOS'}
-                                            </button>
-                                        ))}
-                                    </div>
+                    {/* ────── MAESTRO ────── */}
+                    {activeTab==='maestro' && (
+                        <>
+                            <div className="sub-tab">
+                                {['zona','nodo'].map(t=>(
+                                    <button key={t} onClick={()=>setAdminSec(t)} className={`sub-btn ${adminSec===t?'sub-active':'sub-inactive'}`}>
+                                        {t==='zona'?'ADMINISTRAR ZONAS':'ADMINISTRAR NODOS'}
+                                    </button>
+                                ))}
+                            </div>
 
-                                    {adminSection === 'zona' && (
-                                        <div className="space-y-6">
-                                            <form onSubmit={handleAddZone} className="bg-white p-8 rounded-[2.5rem] shadow-premium space-y-4">
-                                                <div className="text-center font-black text-slate-800 text-xs uppercase">NUEVA ZONA GEOGRÁFICA</div>
-                                                <div className="space-y-3">
-                                                    <input required placeholder="NOMBRE DE LA ZONA (EJ: SAN FRANCISCO)" className="w-full p-4 bg-slate-50 rounded-2xl text-[11px] font-black outline-none border-2 border-transparent focus:border-teal-100" value={newZone.name} onChange={e=>setNewZone({...newZone, name: e.target.value.toUpperCase()})} />
-                                                    
-                                                    <div className="space-y-2 pt-2">
-                                                        <label className="text-[8px] text-slate-400 uppercase font-black">COLOR PARA EL CALENDARIO</label>
-                                                        <div className="flex flex-wrap gap-2">
-                                                            {ZONE_COLORS.map(color => (
-                                                                <button key={color} type="button" onClick={() => setNewZone({...newZone, color})} className={`w-8 h-8 rounded-full ${color} ${newZone.color === color ? 'ring-4 ring-offset-2 ring-slate-800' : 'ring-1 ring-slate-200'} transition-all`}></button>
-                                                            ))}
-                                                        </div>
-                                                    </div>
-
-                                                    <button type="submit" className="w-full bg-slate-900 text-white p-4 rounded-2xl font-black text-[10px] tracking-widest mt-4">CREAR ZONA</button>
-                                                </div>
-                                            </form>
-                                            
-                                            <div className="space-y-2">
-                                                <h4 className="text-[10px] font-black text-slate-400 px-4 uppercase tracking-widest flex justify-between">
-                                                    <span>ZONAS REGISTRADAS</span>
-                                                    {isAdminMode && <span className="text-teal-500">SELECCIONE COLOR PARA EDITAR</span>}
-                                                </h4>
-                                                {zones.map(z => (
-                                                    <div key={z.id} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm">
-                                                        <div className="flex justify-between items-center">
-                                                            <div className="flex items-center gap-3">
-                                                                <div className={`w-4 h-4 rounded-full shadow-sm ${z.color || 'bg-slate-500'}`}></div>
-                                                                <span className="text-[12px] font-black text-slate-800">{z.name}</span>
-                                                            </div>
-                                                            {isAdminMode && <button onClick={() => deleteItem('pm_zones', z.id, z.name)} className="text-red-400 p-2 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>}
-                                                        </div>
-                                                        
-                                                        {isAdminMode && (
-                                                            <div className="mt-4 pt-4 border-t border-slate-50">
-                                                                <div className="flex flex-wrap gap-1.5">
-                                                                    {ZONE_COLORS.map(color => (
-                                                                        <button 
-                                                                            key={color} 
-                                                                            onClick={() => handleUpdateZoneColor(z.id, color)} 
-                                                                            className={`w-6 h-6 rounded-full transition-all ${color} ${z.color === color ? 'ring-2 ring-offset-2 ring-teal-500 scale-110' : 'opacity-40 hover:opacity-100'}`}
-                                                                            title="Tocar para cambiar color"
-                                                                        ></button>
-                                                                    ))}
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                    </div>
+                            {adminSec==='zona' && (
+                                <>
+                                    <form onSubmit={handleAddZone} className="card card-xl" style={{padding:'22px',display:'flex',flexDirection:'column',gap:12}}>
+                                        <div style={{fontSize:'.65rem',fontWeight:900,textAlign:'center',letterSpacing:'.08em',borderBottom:'1px solid var(--border)',paddingBottom:12,marginBottom:2}}>NUEVA ZONA GEOGRÁFICA</div>
+                                        <div className="form-group">
+                                            <label className="form-lbl">NOMBRE</label>
+                                            <input required className="form-inp" placeholder="EJ: SAN FRANCISCO" value={newZone.name} onChange={e=>setNewZone({...newZone,name:e.target.value.toUpperCase()})} />
+                                        </div>
+                                        <div className="form-group">
+                                            <label className="form-lbl">COLOR EN CALENDARIO</label>
+                                            <div style={{display:'flex',flexWrap:'wrap',gap:8,paddingTop:4}}>
+                                                {ZONE_COLORS.map(c=>(
+                                                    <button key={c} type="button" onClick={()=>setNewZone({...newZone,color:c})} className={`color-sw ${c} ${newZone.color===c?'sel':''}`} />
                                                 ))}
                                             </div>
                                         </div>
-                                    )}
-
-                                    {adminSection === 'nodo' && (
-                                        <div className="space-y-6">
-                                            <form onSubmit={handleAddNode} className="bg-white p-8 rounded-[2.5rem] shadow-premium space-y-4">
-                                                <div className="text-center font-black text-slate-800 text-xs uppercase">AGREGAR NODO A UNA ZONA</div>
-                                                <select required className="w-full p-4 bg-slate-50 rounded-2xl text-[11px] font-black outline-none border-2 border-transparent focus:border-teal-100 appearance-none" value={newNode.zoneId} onChange={e=>setNewNode({...newNode, zoneId: e.target.value})}>
-                                                    <option value="">ASIGNAR A ZONA...</option>
-                                                    {zones.map(z => <option key={z.id} value={z.id}>{z.name}</option>)}
-                                                </select>
-                                                <div className="flex gap-2">
-                                                    <input required placeholder="NOMBRE DEL NODO" className="w-full p-4 bg-slate-50 rounded-2xl text-[11px] font-black outline-none border-2 border-transparent focus:border-teal-100" value={newNode.name} onChange={e=>setNewNode({...newNode, name: e.target.value.toUpperCase()})} />
-                                                    <button type="submit" className="bg-slate-900 text-white px-8 rounded-2xl font-black text-[10px] tracking-widest shrink-0">CREAR</button>
-                                                </div>
-                                            </form>
-                                            
-                                            <div className="space-y-4">
-                                                <h4 className="text-[10px] font-black text-slate-400 px-4 tracking-widest">NODOS POR ZONA</h4>
-                                                {zones.map(z => {
-                                                    const znodes = nodes.filter(n => n.zoneId === z.id);
-                                                    if(znodes.length === 0) return null;
-                                                    return (
-                                                        <div key={z.id} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm space-y-3">
-                                                            <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
-                                                                <div className={`w-2 h-2 rounded-full ${z.color || 'bg-slate-500'}`}></div>
-                                                                <div className="text-[10px] font-black text-slate-800 tracking-widest">{z.name}</div>
-                                                            </div>
-                                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                                                {znodes.map(n => (
-                                                                    <div key={n.id} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-transparent hover:border-slate-200 transition-colors">
-                                                                        <span className="text-[11px] font-black text-slate-700">{n.name}</span>
-                                                                        {isAdminMode && <button onClick={() => deleteItem('pm_nodes', n.id, n.name)} className="text-red-400 hover:text-red-600"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>}
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
+                                        <button type="submit" className="btn btn-dark" style={{width:'100%',padding:'13px',borderRadius:14,marginTop:4}}>+ CREAR ZONA</button>
+                                    </form>
+                                    <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                                        <div className="sec-title" style={{marginBottom:4,display:'flex',justifyContent:'space-between'}}>
+                                            <span>ZONAS REGISTRADAS ({zones.length})</span>
+                                            {isAdmin && <span style={{color:'var(--primary)',fontSize:'.58rem'}}>MODO EDITOR ACTIVO</span>}
                                         </div>
-                                    )}
-                                </div>
+                                        {zones.map(z=>(
+                                            <div key={z.id} className="zone-card">
+                                                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                                                    <div style={{display:'flex',alignItems:'center',gap:10}}>
+                                                        <span className={`${z.color||'bg-slate-500'}`} style={{width:14,height:14,borderRadius:'50%',display:'inline-block',flexShrink:0}} />
+                                                        <span style={{fontSize:'.75rem',fontWeight:900}}>{z.name}</span>
+                                                        <span style={{fontSize:'.58rem',color:'var(--muted)',fontWeight:700}}>{nodes.filter(n=>n.zoneId===z.id).length} NODOS</span>
+                                                    </div>
+                                                    {isAdmin && <button onClick={()=>deleteItem('pm_zones',z.id,z.name)} className="btn btn-delete"><TrashIco /></button>}
+                                                </div>
+                                                {isAdmin && (
+                                                    <div style={{marginTop:12,paddingTop:12,borderTop:'1px solid var(--border)',display:'flex',flexWrap:'wrap',gap:6}}>
+                                                        {ZONE_COLORS.map(c=>(
+                                                            <button key={c} type="button" onClick={()=>handleUpdateZoneColor(z.id,c)} className={`color-sw ${c}`} style={{width:22,height:22,opacity:z.color===c?1:.3}} />
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </>
                             )}
 
-                        </main>
-                    </div>
-                </div>
-            );
-        };
+                            {adminSec==='nodo' && (
+                                <>
+                                    <form onSubmit={handleAddNode} className="card card-xl" style={{padding:'22px',display:'flex',flexDirection:'column',gap:12}}>
+                                        <div style={{fontSize:'.65rem',fontWeight:900,textAlign:'center',letterSpacing:'.08em',borderBottom:'1px solid var(--border)',paddingBottom:12,marginBottom:2}}>AGREGAR NODO A UNA ZONA</div>
+                                        <div className="form-group">
+                                            <label className="form-lbl">ZONA DESTINO</label>
+                                            <select required className="form-sel" value={newNode.zoneId} onChange={e=>setNewNode({...newNode,zoneId:e.target.value})}>
+                                                <option value="">SELECCIONAR ZONA…</option>
+                                                {zones.map(z=><option key={z.id} value={z.id}>{z.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div style={{display:'flex',gap:8}}>
+                                            <div className="form-group" style={{flex:1}}>
+                                                <label className="form-lbl">NOMBRE DEL NODO</label>
+                                                <input required className="form-inp" placeholder="NOMBRE DEL NODO" value={newNode.name} onChange={e=>setNewNode({...newNode,name:e.target.value.toUpperCase()})} />
+                                            </div>
+                                            <div style={{alignSelf:'flex-end'}}>
+                                                <button type="submit" className="btn btn-dark" style={{padding:'13px 20px',borderRadius:13}}>+ CREAR</button>
+                                            </div>
+                                        </div>
+                                    </form>
+                                    <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                                        <div className="sec-title" style={{marginBottom:4}}>NODOS POR ZONA</div>
+                                        {zones.map(z=>{
+                                            const znodes=nodes.filter(n=>n.zoneId===z.id);
+                                            if(!znodes.length) return null;
+                                            return (
+                                                <div key={z.id} className="zone-card">
+                                                    <div style={{display:'flex',alignItems:'center',gap:8,borderBottom:'1px solid var(--border)',paddingBottom:10,marginBottom:10}}>
+                                                        <span className={`${z.color||'bg-slate-500'}`} style={{width:8,height:8,borderRadius:'50%',display:'inline-block',flexShrink:0}} />
+                                                        <span style={{fontSize:'.63rem',fontWeight:900,letterSpacing:'.12em'}}>{z.name}</span>
+                                                        <span style={{fontSize:'.58rem',fontWeight:700,color:'var(--muted)',marginLeft:'auto'}}>{znodes.length} NODO{znodes.length!==1?'S':''}</span>
+                                                    </div>
+                                                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
+                                                        {znodes.map(n=>(
+                                                            <div key={n.id} className="node-item">
+                                                                <span className="node-name">{n.name}</span>
+                                                                {isAdmin && <button onClick={()=>deleteItem('pm_nodes',n.id,n.name)} style={{color:'#dc2626',background:'none',border:'none',cursor:'pointer',padding:4,lineHeight:0}}><TrashIco /></button>}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </>
+                            )}
+                        </>
+                    )}
+                </main>
+            </div>
+        </div>
+    );
+};
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
 </body>
 </html>
