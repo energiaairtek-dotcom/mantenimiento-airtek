@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -180,11 +181,15 @@
                 repeatDays: 30
             });
 
-            // Action prompt para INICIAR (técnicos), PAUSAR o ANULAR (motivos)
-            const [actionPrompt, setActionPrompt] = useState({ id: null, type: null, text: '' });
+            // Action prompt (includes ODT for START)
+            const [actionPrompt, setActionPrompt] = useState({ id: null, type: null, text: '', odt: '' });
             
-            // Delete prompt (para series repetitivas)
             const [deletePrompt, setDeletePrompt] = useState({ isOpen: false, schedule: null });
+
+            // History Filters
+            const [historyFilterZone, setHistoryFilterZone] = useState('');
+            const [historyFilterNode, setHistoryFilterNode] = useState('');
+            const [historyFilterTech, setHistoryFilterTech] = useState('');
 
             // Calendar state
             const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -335,7 +340,6 @@
                 let nextDate = new Date(newSchedule.date + 'T00:00:00Z');
                 const endDate = new Date(nextDate);
                 
-                // Si es recurrente, programamos para todo 1 año a partir de la fecha
                 if (newSchedule.recurring) {
                     endDate.setFullYear(endDate.getFullYear() + 1); 
                 }
@@ -343,31 +347,27 @@
                 const datesToSave = [];
 
                 while (nextDate <= endDate) {
-                    // Ajuste de fines de semana
                     let dayOfWeek = nextDate.getUTCDay();
-                    if (dayOfWeek === 6) nextDate.setUTCDate(nextDate.getUTCDate() + 2); // Sábado -> Lunes
-                    if (dayOfWeek === 0) nextDate.setUTCDate(nextDate.getUTCDate() + 1); // Domingo -> Lunes
+                    if (dayOfWeek === 6) nextDate.setUTCDate(nextDate.getUTCDate() + 2); 
+                    if (dayOfWeek === 0) nextDate.setUTCDate(nextDate.getUTCDate() + 1); 
 
-                    // Buscar hueco libre si se exceden los 5 nodos
                     let foundSlot = false;
                     let checkDate = new Date(nextDate);
 
-                    for (let i = 0; i < 30; i++) { // buscar hasta 30 días hacia adelante
+                    for (let i = 0; i < 30; i++) { 
                         let checkDay = checkDate.getUTCDay();
                         if (checkDay !== 6 && checkDay !== 0) {
                             let dateStr = checkDate.toISOString().split('T')[0];
                             
-                            // Nodos ya guardados en BD
                             let existingNodesCount = schedules
                                 .filter(s => s.date === dateStr)
                                 .reduce((sum, s) => sum + (s.nodes?.length || 0), 0);
                             
-                            // Nodos encolados en este mismo batch
                             let enqueuedCount = datesToSave.filter(d => d === dateStr).length * newSchedule.selectedNodes.length;
 
                             if (existingNodesCount + enqueuedCount + newSchedule.selectedNodes.length <= 5) {
                                 foundSlot = true;
-                                nextDate = new Date(checkDate); // Fija la fecha en el hueco encontrado
+                                nextDate = new Date(checkDate); 
                                 break;
                             }
                         }
@@ -382,12 +382,12 @@
                     const finalDateStr = nextDate.toISOString().split('T')[0];
                     datesToSave.push(finalDateStr);
 
-                    // Preparar el doc para el batch
                     const newRef = firestoreDoc(schedulesCol);
                     batch.set(newRef, {
                         date: finalDateStr,
                         zoneId: newSchedule.zoneId,
                         techs: '',
+                        odt: '',
                         reason: '',
                         nodes: newSchedule.selectedNodes,
                         status: 'PENDIENTE',
@@ -399,13 +399,11 @@
 
                     if (!newSchedule.recurring) break;
 
-                    // IMPORTANTE: Calcula la próxima fecha basándose en la ÚLTIMA fecha válida (hereda los corrimientos)
                     nextDate.setUTCDate(nextDate.getUTCDate() + Number(newSchedule.repeatDays));
                 }
 
                 try {
-                    await batch.commit(); // Escribe todo de golpe
-                    
+                    await batch.commit(); 
                     setSelectedDateDetails(datesToSave[0]); 
                     setNewSchedule({ date: '', zoneId: '', selectedNodes: [], recurring: false, repeatDays: 30 });
                     
@@ -418,12 +416,12 @@
             };
 
             const triggerActionPrompt = (id, type) => {
-                setActionPrompt({ id, type, text: '' });
+                setActionPrompt({ id, type, text: '', odt: '' });
             };
 
             const submitActionPrompt = async () => {
                 if (!actionPrompt.text.trim()) {
-                    alert("POR FAVOR COMPLETE EL CAMPO REQUERIDO.");
+                    alert("POR FAVOR COMPLETE EL CAMPO REQUERIDO (TÉCNICOS O MOTIVO).");
                     return;
                 }
                 const { doc, updateDoc } = window.FirebaseSDK;
@@ -431,13 +429,18 @@
                 
                 try {
                     if (actionPrompt.type === 'START') {
-                        await updateDoc(scheduleRef, { status: 'EN EJECUCION', techs: actionPrompt.text.toUpperCase(), reason: '' });
+                        await updateDoc(scheduleRef, { 
+                            status: 'EN EJECUCION', 
+                            techs: actionPrompt.text.toUpperCase(), 
+                            odt: actionPrompt.odt ? actionPrompt.odt.toUpperCase() : '',
+                            reason: '' 
+                        });
                     } else if (actionPrompt.type === 'PAUSE') {
                         await updateDoc(scheduleRef, { status: 'EN PAUSA', reason: actionPrompt.text.toUpperCase() });
                     } else if (actionPrompt.type === 'CANCEL') {
                         await updateDoc(scheduleRef, { status: 'ANULADA', reason: actionPrompt.text.toUpperCase() });
                     }
-                    setActionPrompt({ id: null, type: null, text: '' });
+                    setActionPrompt({ id: null, type: null, text: '', odt: '' });
                 } catch(e) { console.error(e); }
             };
 
@@ -445,9 +448,10 @@
                 const { doc, updateDoc } = window.FirebaseSDK;
                 const scheduleRef = doc(dbRef.current, 'artifacts', appId, 'public', 'data', 'pm_schedules', sch.id);
                 try {
-                    // Si va a pendiente, limpiamos el motivo
                     let updates = { status: newStatus };
-                    if(newStatus === 'PENDIENTE') updates.reason = ''; 
+                    if(newStatus === 'PENDIENTE') {
+                        updates.reason = '';
+                    }
                     await updateDoc(scheduleRef, updates);
                 } catch(e) { console.error(e); }
             };
@@ -478,37 +482,66 @@
                 setDeletePrompt({ isOpen: false, schedule: null });
             };
 
+            const getFilteredHistory = () => {
+                let filtered = schedules.filter(s => s.status === 'COMPLETADO');
+                
+                if (historyFilterZone) {
+                    filtered = filtered.filter(s => s.zoneId === historyFilterZone);
+                }
+                if (historyFilterNode) {
+                    filtered = filtered.filter(s => s.nodes.includes(historyFilterNode));
+                }
+                if (historyFilterTech) {
+                    const searchTerm = historyFilterTech.toUpperCase();
+                    filtered = filtered.filter(s => s.techs && s.techs.includes(searchTerm));
+                }
+                
+                return filtered.sort((a,b) => new Date(b.date) - new Date(a.date));
+            };
+
             const exportToPDF = () => {
                 if (!window.jspdf || !window.jspdf.jsPDF) {
                     alert("La librería PDF aún está cargando. Intente en unos segundos.");
                     return;
                 }
                 const doc = new window.jspdf.jsPDF();
-                const completed = schedules.filter(s => s.status === 'COMPLETADO');
+                const filteredData = getFilteredHistory();
                 
-                if(completed.length === 0) {
-                    alert("NO HAY MANTENIMIENTOS COMPLETADOS PARA EXPORTAR.");
+                if(filteredData.length === 0) {
+                    alert("NO HAY MANTENIMIENTOS COMPLETADOS PARA EXPORTAR CON ESTOS FILTROS.");
                     return;
                 }
 
                 doc.setFontSize(16);
-                doc.setTextColor(13, 148, 136); // Teal-600
-                doc.text("HISTORIAL DE MANTENIMIENTO PREVENTIVO - AIRTEK", 14, 20);
+                doc.setTextColor(13, 148, 136); 
+                doc.text("HISTORIAL DE MANTENIMIENTO PREVENTIVO", 14, 20);
                 
                 doc.setFontSize(10);
-                doc.setTextColor(100, 116, 139); // Slate-500
+                doc.setTextColor(100, 116, 139);
                 doc.text(`Generado el: ${new Date().toLocaleDateString('es-VE')}`, 14, 28);
 
-                const tableData = completed.map(s => [
+                // Si hay filtros activos, mostrarlos en el PDF
+                let filterText = "";
+                if (historyFilterZone) filterText += `Zona: ${getZoneName(historyFilterZone)} | `;
+                if (historyFilterNode) filterText += `Nodo: ${getNodeName(historyFilterNode)} | `;
+                if (historyFilterTech) filterText += `Técnico: ${historyFilterTech}`;
+                
+                if (filterText) {
+                    doc.setFontSize(8);
+                    doc.text(`Filtros: ${filterText}`, 14, 33);
+                }
+
+                const tableData = filteredData.map(s => [
                     formatDate(s.date),
                     getZoneName(s.zoneId),
                     s.nodes.map(nId => getNodeName(nId)).join(', '),
+                    s.odt || 'N/A',
                     s.techs || 'NO REGISTRADO'
                 ]);
 
                 doc.autoTable({
-                    startY: 35,
-                    head: [['FECHA', 'ZONA', 'NODOS INTERVENIDOS', 'TÉCNICOS']],
+                    startY: filterText ? 38 : 35,
+                    head: [['FECHA', 'ZONA', 'NODOS INTERVENIDOS', 'ODT', 'TÉCNICOS']],
                     body: tableData,
                     headStyles: { fillColor: [13, 148, 136] },
                     styles: { fontSize: 8, cellPadding: 4 },
@@ -697,7 +730,6 @@
                                                         
                                                         const zColor = getZoneColor(sch.zoneId);
 
-                                                        // Border styling based on status
                                                         let borderStyle = 'border-l-orange-400';
                                                         if (isCompleted) borderStyle = 'border-l-teal-500 opacity-70';
                                                         else if (isExecuting) borderStyle = 'border-l-blue-500 pulse-executing';
@@ -708,11 +740,9 @@
                                                         return (
                                                             <div key={sch.id} className={`bg-white p-5 rounded-[2rem] shadow-sm border-l-4 flex flex-col gap-4 transition-all ${borderStyle}`}>
                                                                 
-                                                                {/* Cabecera del Mantenimiento */}
                                                                 <div className="flex flex-col sm:flex-row gap-4 justify-between">
                                                                     <div className="space-y-3 flex-1">
                                                                         <div className="flex items-center gap-2 flex-wrap">
-                                                                            {/* Badge de Estado */}
                                                                             <span className={`text-[9px] px-2 py-1 rounded font-black tracking-widest ${
                                                                                 isCompleted ? 'bg-teal-100 text-teal-700' : 
                                                                                 isExecuting ? 'bg-blue-100 text-blue-700' : 
@@ -722,7 +752,6 @@
                                                                             }`}>
                                                                                 {sch.status}
                                                                             </span>
-                                                                            {/* Zona */}
                                                                             <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded border border-slate-100">
                                                                                 <span className={`w-2 h-2 rounded-full ${isCancelled ? 'bg-red-200' : zColor}`}></span>
                                                                                 <span className={`text-[10px] font-black tracking-wider ${isCancelled ? 'text-slate-400 line-through' : 'text-slate-600'}`}>
@@ -745,25 +774,29 @@
                                                                             </div>
                                                                         </div>
 
-                                                                        {/* Motivo de Pausa/Anulación */}
                                                                         {sch.reason && (
                                                                             <div className={`text-[9px] font-black p-2 rounded-lg ${isCancelled ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-700'}`}>
                                                                                 MOTIVO: {sch.reason}
                                                                             </div>
                                                                         )}
 
-                                                                        {/* Técnicos */}
-                                                                        {sch.techs && !isCancelled && (
-                                                                            <div className="text-[9px] text-slate-500 font-black flex items-center gap-1.5 bg-slate-100 p-2 rounded-lg inline-flex">
-                                                                                <svg className="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
-                                                                                TÉCNICOS: <span className="text-slate-800">{sch.techs}</span>
-                                                                            </div>
-                                                                        )}
+                                                                        <div className="flex flex-wrap gap-2">
+                                                                            {sch.techs && !isCancelled && (
+                                                                                <div className="text-[9px] text-slate-500 font-black flex items-center gap-1.5 bg-slate-100 p-2 rounded-lg">
+                                                                                    <svg className="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                                                                                    TÉCNICOS: <span className="text-slate-800">{sch.techs}</span>
+                                                                                </div>
+                                                                            )}
+                                                                            {sch.odt && !isCancelled && (
+                                                                                <div className="text-[9px] font-black flex items-center gap-1.5 bg-indigo-50 text-indigo-700 p-2 rounded-lg border border-indigo-100">
+                                                                                    <svg className="w-3 h-3 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                                                                                    ODT: <span className="text-indigo-900">{sch.odt}</span>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
                                                                     </div>
 
-                                                                    {/* Botones de Acción (Iconos + Texto) */}
                                                                     <div className="flex flex-row sm:flex-col gap-1.5 shrink-0 justify-center flex-wrap">
-                                                                        
                                                                         {isPending && actionPrompt.id !== sch.id && (
                                                                             <>
                                                                                 <button onClick={() => triggerActionPrompt(sch.id, 'START')} className="flex-1 sm:flex-none px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-[9px] font-black tracking-widest shadow-md transition-colors">INICIAR</button>
@@ -801,22 +834,33 @@
                                                                     </div>
                                                                 </div>
 
-                                                                {/* Prompts para textos (Técnicos o Motivos) */}
+                                                                {/* Prompts para textos (Técnicos, ODT o Motivos) */}
                                                                 {actionPrompt.id === sch.id && (
                                                                     <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl mt-2 animate-in slide-in-from-top-2">
                                                                         <label className={`text-[9px] font-black tracking-widest block mb-2 ${actionPrompt.type === 'START' ? 'text-teal-600' : 'text-slate-500'}`}>
-                                                                            {actionPrompt.type === 'START' ? 'ASIGNAR TÉCNICOS PARA ESTA JORNADA' : 'INDIQUE EL MOTIVO (OBLIGATORIO)'}
+                                                                            {actionPrompt.type === 'START' ? 'DATOS DE INICIO DE INSPECCIÓN' : 'INDIQUE EL MOTIVO (OBLIGATORIO)'}
                                                                         </label>
-                                                                        <div className="flex flex-col sm:flex-row gap-2">
-                                                                            <input 
-                                                                                autoFocus
-                                                                                className="flex-1 p-3 bg-white rounded-xl text-[11px] font-black outline-none border border-slate-200 focus:border-teal-400" 
-                                                                                placeholder={actionPrompt.type === 'START' ? 'EJ: L. RAMOS, D. CHACÍN' : 'EJ: LLUVIA, FALTA MATERIAL...'}
-                                                                                value={actionPrompt.text}
-                                                                                onChange={(e) => setActionPrompt({...actionPrompt, text: e.target.value})}
-                                                                            />
-                                                                            <div className="flex gap-2">
-                                                                                <button onClick={() => setActionPrompt({id: null, type: null, text: ''})} className="px-4 py-3 bg-slate-200 text-slate-600 rounded-xl text-[10px] font-black tracking-widest">CANCELAR</button>
+                                                                        
+                                                                        <div className="flex flex-col gap-2">
+                                                                            <div className="flex flex-col sm:flex-row gap-2">
+                                                                                <input 
+                                                                                    autoFocus
+                                                                                    className="flex-1 p-3 bg-white rounded-xl text-[11px] font-black outline-none border border-slate-200 focus:border-teal-400" 
+                                                                                    placeholder={actionPrompt.type === 'START' ? 'TÉCNICOS (EJ: L. RAMOS, D. CHACÍN)' : 'EJ: LLUVIA, FALTA MATERIAL...'}
+                                                                                    value={actionPrompt.text}
+                                                                                    onChange={(e) => setActionPrompt({...actionPrompt, text: e.target.value})}
+                                                                                />
+                                                                                {actionPrompt.type === 'START' && (
+                                                                                    <input 
+                                                                                        className="flex-1 sm:max-w-[200px] p-3 bg-white rounded-xl text-[11px] font-black outline-none border border-slate-200 focus:border-teal-400" 
+                                                                                        placeholder="Nº ODT ODOO (OPCIONAL)"
+                                                                                        value={actionPrompt.odt}
+                                                                                        onChange={(e) => setActionPrompt({...actionPrompt, odt: e.target.value})}
+                                                                                    />
+                                                                                )}
+                                                                            </div>
+                                                                            <div className="flex gap-2 justify-end mt-1">
+                                                                                <button onClick={() => setActionPrompt({id: null, type: null, text: '', odt: ''})} className="px-4 py-3 bg-slate-200 text-slate-600 rounded-xl text-[10px] font-black tracking-widest">CANCELAR</button>
                                                                                 <button onClick={submitActionPrompt} className={`px-4 py-3 text-white rounded-xl text-[10px] font-black tracking-widest shadow-md ${actionPrompt.type === 'START' ? 'bg-teal-600' : (actionPrompt.type === 'PAUSE' ? 'bg-amber-500' : 'bg-red-500')}`}>
                                                                                     GUARDAR
                                                                                 </button>
@@ -905,7 +949,7 @@
 
                             {/* --- TAB: HISTORIAL --- */}
                             {activeTab === 'historial' && (
-                                <div className="space-y-6">
+                                <div className="space-y-4">
                                     <div className="bg-white p-6 sm:p-8 rounded-[2.5rem] shadow-premium border border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4">
                                         <div>
                                             <h2 className="text-sm font-black text-slate-800 tracking-widest">HISTORIAL DE EJECUCIÓN</h2>
@@ -916,6 +960,51 @@
                                         </button>
                                     </div>
 
+                                    {/* FILTROS AVANZADOS */}
+                                    <div className="bg-white p-4 sm:p-5 rounded-[2rem] shadow-sm border border-slate-100 space-y-3">
+                                        <div className="flex justify-between items-center px-1">
+                                            <h3 className="text-[10px] font-black text-slate-500 tracking-widest">FILTRAR RESULTADOS</h3>
+                                            {(historyFilterZone || historyFilterNode || historyFilterTech) && (
+                                                <button 
+                                                    onClick={() => {setHistoryFilterZone(''); setHistoryFilterNode(''); setHistoryFilterTech('');}}
+                                                    className="text-[9px] text-red-500 hover:text-red-700 font-black tracking-widest"
+                                                >
+                                                    LIMPIAR FILTROS
+                                                </button>
+                                            )}
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                            <select 
+                                                className="w-full p-3 bg-slate-50 rounded-xl text-[10px] font-black border border-slate-200 outline-none focus:border-teal-400 appearance-none"
+                                                value={historyFilterZone}
+                                                onChange={(e) => {setHistoryFilterZone(e.target.value); setHistoryFilterNode('');}}
+                                            >
+                                                <option value="">TODAS LAS ZONAS</option>
+                                                {zones.map(z => <option key={z.id} value={z.id}>{z.name}</option>)}
+                                            </select>
+
+                                            <select 
+                                                className="w-full p-3 bg-slate-50 rounded-xl text-[10px] font-black border border-slate-200 outline-none focus:border-teal-400 appearance-none"
+                                                value={historyFilterNode}
+                                                onChange={(e) => setHistoryFilterNode(e.target.value)}
+                                            >
+                                                <option value="">TODOS LOS NODOS</option>
+                                                {nodes
+                                                    .filter(n => historyFilterZone ? n.zoneId === historyFilterZone : true)
+                                                    .map(n => <option key={n.id} value={n.id}>{n.name}</option>)
+                                                }
+                                            </select>
+
+                                            <input 
+                                                type="text"
+                                                placeholder="BUSCAR COLABORADOR / TÉCNICO"
+                                                className="w-full p-3 bg-slate-50 rounded-xl text-[10px] font-black border border-slate-200 outline-none focus:border-teal-400"
+                                                value={historyFilterTech}
+                                                onChange={(e) => setHistoryFilterTech(e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+
                                     <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden">
                                         <div className="overflow-x-auto">
                                             <table className="w-full text-left border-collapse">
@@ -923,21 +1012,20 @@
                                                     <tr className="bg-slate-50 border-b border-slate-100 text-[9px] text-slate-400 tracking-widest">
                                                         <th className="p-4 font-black">FECHA</th>
                                                         <th className="p-4 font-black">ZONA</th>
-                                                        <th className="p-4 font-black">NODOS INTERVENIDOS</th>
+                                                        <th className="p-4 font-black min-w-[150px]">NODOS INTERVENIDOS</th>
+                                                        <th className="p-4 font-black">ODT (ODOO)</th>
                                                         <th className="p-4 font-black">TÉCNICOS</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="text-[11px] font-black text-slate-700">
-                                                    {schedules.filter(s => s.status === 'COMPLETADO').length === 0 ? (
+                                                    {getFilteredHistory().length === 0 ? (
                                                         <tr>
-                                                            <td colSpan="4" className="p-8 text-center text-slate-400 font-bold text-[10px] tracking-widest">
-                                                                AÚN NO HAY MANTENIMIENTOS FINALIZADOS
+                                                            <td colSpan="5" className="p-8 text-center text-slate-400 font-bold text-[10px] tracking-widest">
+                                                                NO SE ENCONTRARON REGISTROS CON ESTOS FILTROS
                                                             </td>
                                                         </tr>
                                                     ) : (
-                                                        schedules.filter(s => s.status === 'COMPLETADO')
-                                                        .sort((a,b) => new Date(b.date) - new Date(a.date))
-                                                        .map(s => (
+                                                        getFilteredHistory().map(s => (
                                                             <tr key={s.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
                                                                 <td className="p-4 whitespace-nowrap">{formatDate(s.date)}</td>
                                                                 <td className="p-4">
@@ -948,6 +1036,9 @@
                                                                 </td>
                                                                 <td className="p-4 leading-relaxed">
                                                                     {s.nodes.map(n => getNodeName(n)).join(', ')}
+                                                                </td>
+                                                                <td className="p-4">
+                                                                    {s.odt ? <span className="bg-indigo-50 text-indigo-700 px-2 py-1 rounded-md text-[9px] border border-indigo-100">{s.odt}</span> : <span className="text-slate-400 text-[9px]">N/A</span>}
                                                                 </td>
                                                                 <td className="p-4 text-teal-700">{s.techs || 'NO REGISTRADO'}</td>
                                                             </tr>
