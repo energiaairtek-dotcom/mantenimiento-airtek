@@ -375,6 +375,184 @@ const statusLabel = (s, isPast, delay) => {
 const ttStatusClass = (s,isPast) => s==='COMPLETADO'?'tt-completed':s==='EN EJECUCION'?'tt-executing':s==='EN PAUSA'?'tt-paused':s==='ANULADA'?'tt-cancelled':isPast?'tt-overdue':'tt-pending';
 
 // ════════════════════════════════════════════
+// SCHEDULE CARD — top-level component (outside App)
+// Form inputs use LOCAL state so typing never
+// causes App to re-render and lose focus.
+// ════════════════════════════════════════════
+const SchCard = ({ sch, helpers }) => {
+    const { getZoneName, getZoneColor, getNodeName,
+            activeAction, activeEdit,
+            onStart, onPauseCancel, onEdit,
+            onCancelAction, onCancelEdit,
+            onStatusChange, onDelete, isAdmin } = helpers;
+
+    // Local form state — completely isolated from App
+    const [localTechs,  setLocalTechs]  = React.useState('');
+    const [localOdt,    setLocalOdt]    = React.useState('');
+    const [localReason, setLocalReason] = React.useState('');
+
+    const isCompleted = sch.status==='COMPLETADO';
+    const isExecuting = sch.status==='EN EJECUCION';
+    const isPaused    = sch.status==='EN PAUSA';
+    const isCancelled = sch.status==='ANULADA';
+    const isPending   = sch.status==='PENDIENTE';
+    const schDate     = new Date(sch.date+'T00:00:00Z');
+    const isPast      = schDate < todayMidnight() && isPending;
+    const delay       = calcDelay(sch.date, sch.status);
+    const zColor      = getZoneColor(sch.zoneId);
+    const sCls        = statusClass(sch.status, isPast);
+    const bCls        = badgeClass(sch.status, isPast);
+    const sLbl        = statusLabel(sch.status, isPast, delay);
+    const nid         = sch.nodeId || (sch.nodes && sch.nodes[0]);
+
+    const showStart  = activeAction === sch.id + ':START';
+    const showPause  = activeAction === sch.id + ':PAUSE';
+    const showCancel = activeAction === sch.id + ':CANCEL';
+    const showEdit   = activeEdit   === sch.id;
+    const showBtns   = !showStart && !showPause && !showCancel && !showEdit;
+    const canEdit    = isExecuting || isPaused || isCompleted;
+
+    const handleOpenStart  = () => { setLocalTechs(sch.techs||''); setLocalOdt(sch.odt||''); onStart(sch.id); };
+    const handleOpenPause  = () => { setLocalReason(''); onPauseCancel(sch.id, 'PAUSE'); };
+    const handleOpenCancel = () => { setLocalReason(''); onPauseCancel(sch.id, 'CANCEL'); };
+    const handleOpenEdit   = () => { setLocalTechs(sch.techs||''); setLocalOdt(sch.odt||''); onEdit(sch.id); };
+
+    return (
+        <div className={`sch-card ${sCls}`}>
+            {/* Badges */}
+            <div style={{display:'flex',flexWrap:'wrap',gap:7,alignItems:'center',marginBottom:12}}>
+                <span className={`badge ${bCls}`}>{sLbl}</span>
+                {delay > 0 && <span className="badge b-delay"><ClockIco /> {delay}D RETRASO</span>}
+                <div className="zone-chip">
+                    <span className={`zdot ${isCancelled?'bg-red-200':zColor}`} />
+                    <span style={isCancelled?{textDecoration:'line-through',opacity:.5}:{}}>{getZoneName(sch.zoneId)}</span>
+                </div>
+                {sch.odt && <span className="badge b-odt"><OdtIco /> ODT: {sch.odt}</span>}
+                {sch.isRecurring && <span className="badge b-recurring"><RepeatIco /> CADA {sch.repeatDays}D</span>}
+            </div>
+
+            {/* Node */}
+            <div className={`node-box${isCancelled?' opacity-50':''}`} style={{marginBottom:10}}>
+                <div className="node-box-lbl">NODO A INTERVENIR</div>
+                <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
+                    {nid && <span className="node-tag">{getNodeName(nid)}</span>}
+                </div>
+            </div>
+
+            {/* Reason */}
+            {sch.reason && (
+                <div className={`reason-box ${isCancelled?'reason-cancelled':'reason-paused'}`} style={{marginBottom:10}}>
+                    MOTIVO: {sch.reason}
+                </div>
+            )}
+
+            {/* Techs */}
+            {sch.techs && !isCancelled && (
+                <div className="tech-chip" style={{marginBottom:10}}>
+                    <UserIco /> TÉCNICOS: <strong>{sch.techs}</strong>
+                </div>
+            )}
+
+            {/* Action buttons */}
+            {showBtns && (
+                <div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:4}}>
+                    {isPending && <>
+                        <button onClick={handleOpenStart}  className="btn btn-start"><PlayIco /> INICIAR</button>
+                        <button onClick={handleOpenPause}  className="btn btn-pause"><PauseIco /> PAUSAR</button>
+                        <button onClick={handleOpenCancel} className="btn btn-cancel"><BanIco /> ANULAR</button>
+                    </>}
+                    {isExecuting && <>
+                        <button onClick={()=>onStatusChange(sch,'COMPLETADO')} className="btn btn-complete"><CheckIco /> COMPLETAR</button>
+                        <button onClick={handleOpenPause}  className="btn btn-pause"><PauseIco /> PAUSAR</button>
+                        <button onClick={handleOpenCancel} className="btn btn-cancel"><BanIco /> ANULAR</button>
+                    </>}
+                    {isPaused && <>
+                        <button onClick={()=>onStatusChange(sch,'EN EJECUCION')} className="btn btn-resume"><PlayIco /> REANUDAR</button>
+                        <button onClick={handleOpenCancel} className="btn btn-cancel"><BanIco /> ANULAR</button>
+                    </>}
+                    {(isCancelled||isCompleted) && (
+                        <button onClick={()=>onStatusChange(sch,'PENDIENTE')} className="btn btn-reopen">↺ REABRIR</button>
+                    )}
+                    {canEdit && (
+                        <button onClick={handleOpenEdit} className="btn btn-edit"><EditIco /> EDITAR INFO</button>
+                    )}
+                    {isAdmin && (
+                        <button onClick={()=>onDelete(sch)} className="btn btn-delete" style={{marginLeft:'auto'}}><TrashIco /></button>
+                    )}
+                </div>
+            )}
+
+            {/* START prompt */}
+            {showStart && (
+                <div className="prompt-box" style={{marginTop:12}}>
+                    <div className="prompt-lbl" style={{color:'var(--primary)'}}>ASIGNAR TÉCNICOS Y ORDEN DE TRABAJO</div>
+                    <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                        <div className="form-group">
+                            <label className="form-lbl" style={{color:'var(--primary)'}}>TÉCNICOS ASIGNADOS</label>
+                            <input className="prompt-inp" placeholder="EJ: L. RAMOS, D. CHACÍN"
+                                value={localTechs} onChange={e=>setLocalTechs(e.target.value)} />
+                        </div>
+                        <div className="form-group">
+                            <label className="form-lbl" style={{color:'#7c3aed'}}>NÚMERO ODT (OPCIONAL)</label>
+                            <input className="prompt-inp odt" placeholder="EJ: ODT-2025-001"
+                                value={localOdt} onChange={e=>setLocalOdt(e.target.value)}
+                                onKeyDown={e=>e.key==='Enter'&&onStart(sch.id,'submit',{techs:localTechs,odt:localOdt})} />
+                        </div>
+                        <div style={{display:'flex',gap:6}}>
+                            <button onClick={onCancelAction} className="btn btn-reopen">CANCELAR</button>
+                            <button onClick={()=>onStart(sch.id,'submit',{techs:localTechs,odt:localOdt})} className="btn btn-start">GUARDAR E INICIAR</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* PAUSE / CANCEL prompt */}
+            {(showPause||showCancel) && (
+                <div className="prompt-box" style={{marginTop:12}}>
+                    <div className="prompt-lbl" style={{color:showPause?'#92400e':'#991b1b'}}>
+                        {showPause?'MOTIVO DE PAUSA':'MOTIVO DE ANULACIÓN'} (OBLIGATORIO)
+                    </div>
+                    <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                        <input autoFocus className="prompt-inp" placeholder="EJ: LLUVIA, FALTA MATERIAL..."
+                            value={localReason} onChange={e=>setLocalReason(e.target.value)}
+                            onKeyDown={e=>e.key==='Enter'&&onPauseCancel(sch.id,showPause?'PAUSE':'CANCEL','submit',{reason:localReason})} />
+                        <div style={{display:'flex',gap:6}}>
+                            <button onClick={onCancelAction} className="btn btn-reopen">CANCELAR</button>
+                            <button onClick={()=>onPauseCancel(sch.id,showPause?'PAUSE':'CANCEL','submit',{reason:localReason})}
+                                className={`btn ${showPause?'btn-pause':'btn-cancel'}`}>GUARDAR</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* EDIT prompt */}
+            {showEdit && (
+                <div className="prompt-box edit-mode" style={{marginTop:12}}>
+                    <div className="prompt-lbl" style={{color:'#6b21a8'}}>EDITAR TÉCNICOS Y ODT</div>
+                    <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                        <div className="form-group">
+                            <label className="form-lbl" style={{color:'#7c3aed'}}>TÉCNICOS ASIGNADOS</label>
+                            <input className="prompt-inp" placeholder="EJ: L. RAMOS, D. CHACÍN"
+                                value={localTechs} onChange={e=>setLocalTechs(e.target.value)} />
+                        </div>
+                        <div className="form-group">
+                            <label className="form-lbl" style={{color:'#7c3aed'}}>NÚMERO ODT</label>
+                            <input className="prompt-inp odt" placeholder="EJ: ODT-2025-001"
+                                value={localOdt} onChange={e=>setLocalOdt(e.target.value)}
+                                onKeyDown={e=>e.key==='Enter'&&onEdit(sch.id,'submit',{techs:localTechs,odt:localOdt})} />
+                        </div>
+                        <div style={{display:'flex',gap:6}}>
+                            <button onClick={onCancelEdit} className="btn btn-reopen">CANCELAR</button>
+                            <button onClick={()=>onEdit(sch.id,'submit',{techs:localTechs,odt:localOdt})} className="btn btn-edit"><EditIco /> GUARDAR CAMBIOS</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+// ════════════════════════════════════════════
 const App = () => {
     const [user,setUser]           = useState(null);
     const [loading,setLoading]     = useState(true);
@@ -391,10 +569,6 @@ const App = () => {
     const [newNode,setNewNode]     = useState({ name:'', zoneId:'' });
     const [newSch,setNewSch]       = useState({ date:'', zoneId:'', selectedNodes:[], recurring:false, repeatDays:30 });
 
-    // action prompt: START / PAUSE / CANCEL
-    const [actionP,setActionP]     = useState({ id:null, type:null, techs:'', odt:'', reason:'' });
-    // edit prompt: edit techs + ODT on active/paused/completed
-    const [editP,setEditP]         = useState({ id:null, techs:'', odt:'' });
     // delete confirm
     const [delP,setDelP]           = useState({ isOpen:false, schedule:null });
 
@@ -633,38 +807,45 @@ const App = () => {
         } catch(e){console.error(e);alert("ERROR: "+e.message);}
     };
 
-    // ── Action prompt (START/PAUSE/CANCEL) ──
-    const triggerAction = (id, type, sch) => {
-        if(type==='START') setActionP({ id, type, techs: sch.techs||'', odt: sch.odt||'', reason:'' });
-        else setActionP({ id, type, techs:'', odt:'', reason:'' });
-    };
-    const submitAction = async () => {
+    // ── activeAction: "id:TYPE" or null — just tracks which card/form is open ──
+    const [activeAction, setActiveAction] = useState(null); // e.g. "abc123:START"
+    const [activeEdit,   setActiveEdit]   = useState(null); // schedule id
+
+    // Called by SchCard with (id, 'submit', {techs, odt}) or just (id) to open
+    const handleCardStart = async (id, mode, data) => {
+        if(mode !== 'submit'){ setActiveAction(id+':START'); setActiveEdit(null); return; }
+        const { techs='', odt='' } = data;
+        if(!techs.trim()){ alert("INGRESE LOS TÉCNICOS."); return; }
         const { updateDoc } = window.FirebaseSDK;
-        const ref = docRef('pm_schedules', actionP.id);
         try {
-            if(actionP.type==='START'){
-                if(!actionP.techs.trim()){alert("INGRESE LOS TÉCNICOS.");return;}
-                await updateDoc(ref,{ status:'EN EJECUCION', techs:actionP.techs.toUpperCase(), odt:actionP.odt.toUpperCase(), reason:'' });
-            } else if(actionP.type==='PAUSE'){
-                if(!actionP.reason.trim()){alert("INGRESE EL MOTIVO.");return;}
-                await updateDoc(ref,{ status:'EN PAUSA', reason:actionP.reason.toUpperCase() });
-            } else if(actionP.type==='CANCEL'){
-                if(!actionP.reason.trim()){alert("INGRESE EL MOTIVO.");return;}
-                await updateDoc(ref,{ status:'ANULADA', reason:actionP.reason.toUpperCase() });
-            }
-            setActionP({id:null,type:null,techs:'',odt:'',reason:''});
-        } catch(e){console.error(e);}
+            await updateDoc(docRef('pm_schedules', id), { status:'EN EJECUCION', techs:techs.toUpperCase(), odt:odt.toUpperCase(), reason:'' });
+            setActiveAction(null);
+        } catch(e){ console.error(e); }
     };
 
-    // ── Edit (techs + ODT) ──
-    const triggerEdit = (sch) => setEditP({ id:sch.id, techs:sch.techs||'', odt:sch.odt||'' });
-    const submitEdit = async () => {
-        if(!editP.techs.trim()){alert("INGRESE LOS TÉCNICOS.");return;}
+    // Called by SchCard with (id, type) to open, or (id, type, 'submit', {reason}) to save
+    const handleCardPauseCancel = async (id, type, mode, data) => {
+        if(mode !== 'submit'){ setActiveAction(id+':'+type); setActiveEdit(null); return; }
+        const { reason='' } = data;
+        if(!reason.trim()){ alert("INGRESE EL MOTIVO."); return; }
+        const { updateDoc } = window.FirebaseSDK;
+        const newStatus = type==='PAUSE' ? 'EN PAUSA' : 'ANULADA';
+        try {
+            await updateDoc(docRef('pm_schedules', id), { status:newStatus, reason:reason.toUpperCase() });
+            setActiveAction(null);
+        } catch(e){ console.error(e); }
+    };
+
+    // Called by SchCard with (id) to open, or (id, 'submit', {techs, odt}) to save
+    const handleCardEdit = async (id, mode, data) => {
+        if(mode !== 'submit'){ setActiveEdit(id); setActiveAction(null); return; }
+        const { techs='', odt='' } = data;
+        if(!techs.trim()){ alert("INGRESE LOS TÉCNICOS."); return; }
         const { updateDoc } = window.FirebaseSDK;
         try {
-            await updateDoc(docRef('pm_schedules', editP.id), { techs:editP.techs.toUpperCase(), odt:editP.odt.toUpperCase() });
-            setEditP({id:null,techs:'',odt:''});
-        } catch(e){console.error(e);}
+            await updateDoc(docRef('pm_schedules', id), { techs:techs.toUpperCase(), odt:odt.toUpperCase() });
+            setActiveEdit(null);
+        } catch(e){ console.error(e); }
     };
 
     const handleStatusChange = async (sch, status) => {
@@ -965,187 +1146,6 @@ const App = () => {
     };
 
     // ════════════════════════════════════════════
-    // SCHEDULE CARD COMPONENT
-    // ════════════════════════════════════════════
-    const SchCard = ({sch}) => {
-        const isCompleted = sch.status==='COMPLETADO';
-        const isExecuting = sch.status==='EN EJECUCION';
-        const isPaused    = sch.status==='EN PAUSA';
-        const isCancelled = sch.status==='ANULADA';
-        const isPending   = sch.status==='PENDIENTE';
-        const schDate     = new Date(sch.date+'T00:00:00Z');
-        const isPast      = schDate < todayMidnight() && isPending;
-        const delay       = calcDelay(sch.date, sch.status);
-        const zColor      = getZoneColor(sch.zoneId);
-        const sCls        = statusClass(sch.status, isPast);
-        const bCls        = badgeClass(sch.status, isPast);
-        const sLbl        = statusLabel(sch.status, isPast, delay);
-        const isBeingActioned = actionP.id === sch.id;
-        const isBeingEdited   = editP.id   === sch.id;
-        const canEdit = isExecuting || isPaused || isCompleted;
-
-        return (
-            <div className={`sch-card ${sCls}`}>
-                {/* Row 1: badges */}
-                <div style={{display:'flex',flexWrap:'wrap',gap:7,alignItems:'center',marginBottom:12}}>
-                    <span className={`badge ${bCls}`}>{sLbl}</span>
-                    {delay > 0 && <span className="badge b-delay"><ClockIco /> {delay}D RETRASO</span>}
-                    <div className="zone-chip">
-                        <span className={`zdot ${isCancelled?'bg-red-200':zColor}`} />
-                        <span style={isCancelled?{textDecoration:'line-through',opacity:.5}:{}}>{getZoneName(sch.zoneId)}</span>
-                    </div>
-                    {sch.odt && <span className="badge b-odt"><OdtIco /> ODT: {sch.odt}</span>}
-                    {sch.isRecurring && <span className="badge b-recurring"><RepeatIco /> CADA {sch.repeatDays}D</span>}
-                </div>
-
-                {/* Row 2: node (single per inspection) */}
-                <div className={`node-box${isCancelled?' opacity-50':''}`} style={{marginBottom:10}}>
-                    <div className="node-box-lbl">NODO A INTERVENIR</div>
-                    <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
-                        {(() => {
-                            const nid = sch.nodeId || (sch.nodes && sch.nodes[0]);
-                            return nid ? <span className="node-tag">{getNodeName(nid)}</span> : null;
-                        })()}
-                    </div>
-                </div>
-
-                {/* Reason */}
-                {sch.reason && (
-                    <div className={`reason-box ${isCancelled?'reason-cancelled':'reason-paused'}`} style={{marginBottom:10}}>
-                        MOTIVO: {sch.reason}
-                    </div>
-                )}
-
-                {/* Techs */}
-                {sch.techs && !isCancelled && (
-                    <div className="tech-chip" style={{marginBottom:10}}>
-                        <UserIco />
-                        TÉCNICOS: <strong>{sch.techs}</strong>
-                    </div>
-                )}
-
-                {/* Action buttons */}
-                {!isBeingActioned && !isBeingEdited && (
-                    <div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:4}}>
-                        {isPending && <>
-                            <button onClick={()=>triggerAction(sch.id,'START',sch)} className="btn btn-start"><PlayIco /> INICIAR</button>
-                            <button onClick={()=>triggerAction(sch.id,'PAUSE',sch)} className="btn btn-pause"><PauseIco /> PAUSAR</button>
-                            <button onClick={()=>triggerAction(sch.id,'CANCEL',sch)} className="btn btn-cancel"><BanIco /> ANULAR</button>
-                        </>}
-                        {isExecuting && <>
-                            <button onClick={()=>handleStatusChange(sch,'COMPLETADO')} className="btn btn-complete"><CheckIco /> COMPLETAR</button>
-                            <button onClick={()=>triggerAction(sch.id,'PAUSE',sch)} className="btn btn-pause"><PauseIco /> PAUSAR</button>
-                            <button onClick={()=>triggerAction(sch.id,'CANCEL',sch)} className="btn btn-cancel"><BanIco /> ANULAR</button>
-                        </>}
-                        {isPaused && <>
-                            <button onClick={()=>handleStatusChange(sch,'EN EJECUCION')} className="btn btn-resume"><PlayIco /> REANUDAR</button>
-                            <button onClick={()=>triggerAction(sch.id,'CANCEL',sch)} className="btn btn-cancel"><BanIco /> ANULAR</button>
-                        </>}
-                        {(isCancelled||isCompleted) && (
-                            <button onClick={()=>handleStatusChange(sch,'PENDIENTE')} className="btn btn-reopen">↺ REABRIR</button>
-                        )}
-                        {/* Edit button for active/paused/completed */}
-                        {canEdit && (
-                            <button onClick={()=>triggerEdit(sch)} className="btn btn-edit"><EditIco /> EDITAR INFO</button>
-                        )}
-                        {isAdmin && (
-                            <button onClick={()=>promptDelete(sch)} className="btn btn-delete" style={{marginLeft:'auto'}}><TrashIco /></button>
-                        )}
-                    </div>
-                )}
-
-                {/* START prompt (techs + ODT) */}
-                {isBeingActioned && actionP.type==='START' && (
-                    <div className="prompt-box" style={{marginTop:12}}>
-                        <div className="prompt-lbl" style={{color:'var(--primary)'}}>ASIGNAR TÉCNICOS Y ORDEN DE TRABAJO</div>
-                        <div style={{display:'flex',flexDirection:'column',gap:8}}>
-                            <div className="form-group">
-                                <label className="form-lbl" style={{color:'var(--primary)'}}>TÉCNICOS ASIGNADOS</label>
-                                <input
-                                    className="prompt-inp"
-                                    placeholder="EJ: L. RAMOS, D. CHACÍN"
-                                    value={actionP.techs}
-                                    onChange={e=>setActionP({...actionP,techs:e.target.value})}
-                                />
-                            </div>
-                            <div className="form-group">
-                                <label className="form-lbl" style={{color:'#7c3aed'}}>NÚMERO ODT (OPCIONAL)</label>
-                                <input
-                                    className="prompt-inp odt"
-                                    placeholder="EJ: ODT-2025-001"
-                                    value={actionP.odt}
-                                    onChange={e=>setActionP({...actionP,odt:e.target.value})}
-                                    onKeyDown={e=>e.key==='Enter'&&submitAction()}
-                                />
-                            </div>
-                            <div style={{display:'flex',gap:6}}>
-                                <button onClick={()=>setActionP({id:null,type:null,techs:'',odt:'',reason:''})} className="btn btn-reopen">CANCELAR</button>
-                                <button onClick={submitAction} className="btn btn-start">GUARDAR E INICIAR</button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* PAUSE / CANCEL prompt */}
-                {isBeingActioned && (actionP.type==='PAUSE'||actionP.type==='CANCEL') && (
-                    <div className="prompt-box" style={{marginTop:12}}>
-                        <div className="prompt-lbl" style={{color:actionP.type==='PAUSE'?'#92400e':'#991b1b'}}>
-                            {actionP.type==='PAUSE'?'MOTIVO DE PAUSA':'MOTIVO DE ANULACIÓN'} (OBLIGATORIO)
-                        </div>
-                        <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-                            <input
-                                autoFocus
-                                className="prompt-inp"
-                                style={{flex:1,minWidth:'160px'}}
-                                placeholder="EJ: LLUVIA, FALTA MATERIAL..."
-                                value={actionP.reason}
-                                onChange={e=>setActionP({...actionP,reason:e.target.value})}
-                                onKeyDown={e=>e.key==='Enter'&&submitAction()}
-                            />
-                            <div style={{display:'flex',gap:6}}>
-                                <button onClick={()=>setActionP({id:null,type:null,techs:'',odt:'',reason:''})} className="btn btn-reopen">CANCELAR</button>
-                                <button onClick={submitAction} className={`btn ${actionP.type==='PAUSE'?'btn-pause':'btn-cancel'}`}>GUARDAR</button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* EDIT prompt */}
-                {isBeingEdited && (
-                    <div className="prompt-box edit-mode" style={{marginTop:12}}>
-                        <div className="prompt-lbl" style={{color:'#6b21a8'}}>EDITAR TÉCNICOS Y ODT</div>
-                        <div style={{display:'flex',flexDirection:'column',gap:8}}>
-                            <div className="form-group">
-                                <label className="form-lbl" style={{color:'#7c3aed'}}>TÉCNICOS ASIGNADOS</label>
-                                <input
-                                    className="prompt-inp"
-                                    placeholder="TÉCNICOS"
-                                    value={editP.techs}
-                                    onChange={e=>setEditP({...editP,techs:e.target.value})}
-                                />
-                            </div>
-                            <div className="form-group">
-                                <label className="form-lbl" style={{color:'#7c3aed'}}>NÚMERO ODT</label>
-                                <input
-                                    className="prompt-inp odt"
-                                    placeholder="EJ: ODT-2025-001"
-                                    value={editP.odt}
-                                    onChange={e=>setEditP({...editP,odt:e.target.value})}
-                                    onKeyDown={e=>e.key==='Enter'&&submitEdit()}
-                                />
-                            </div>
-                            <div style={{display:'flex',gap:6}}>
-                                <button onClick={()=>setEditP({id:null,techs:'',odt:''})} className="btn btn-reopen">CANCELAR</button>
-                                <button onClick={submitEdit} className="btn btn-edit"><EditIco /> GUARDAR CAMBIOS</button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-            </div>
-        );
-    };
-
-    // ════════════════════════════════════════════
     // LOADING
     // ════════════════════════════════════════════
     if(loading) return (
@@ -1272,7 +1272,20 @@ const App = () => {
                                                 {daySchedules.length}/5 INSPECCIONES AGENDADAS
                                             </span>
                                         </div>
-                                        {daySchedules.map(sch=><SchCard key={sch.id} sch={sch} />)}
+                                        {daySchedules.map(sch=>(
+                                            <SchCard key={sch.id} sch={sch} helpers={{
+                                                getZoneName, getZoneColor, getNodeName,
+                                                activeAction, activeEdit,
+                                                onStart: handleCardStart,
+                                                onPauseCancel: handleCardPauseCancel,
+                                                onEdit: handleCardEdit,
+                                                onCancelAction: ()=>setActiveAction(null),
+                                                onCancelEdit:   ()=>setActiveEdit(null),
+                                                onStatusChange: handleStatusChange,
+                                                onDelete: promptDelete,
+                                                isAdmin,
+                                            }} />
+                                        ))}
                                     </div>
                                 )}
                             </div>
