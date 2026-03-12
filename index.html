@@ -738,82 +738,99 @@ const App = () => {
     const goToday   = () => { setCurMonth(new Date()); setSelDate(TODAY_STR); };
 
     // ── Tooltip via DOM ref (no React state = no re-renders = tooltip stays visible) ──
-    const tooltipRef    = useRef(null);
-    const tooltipTimer  = useRef(null);
-    // Keep fresh data accessible in tooltip callbacks without stale closures
-    const tooltipData   = useRef(null);
-    tooltipData.current = { byDate, getNodeName, getZoneName, getZoneHex };
+    // ── Hover Tooltip — Native DOM delegation (immune to React re-renders/remounts) ──
+    const tooltipRef  = useRef(null);
+    const ttTimer     = useRef(null);
+    const ttData      = useRef(null);
+    ttData.current    = { byDate, getZoneName, getZoneHex, nodes };
 
-    const showTooltip = (e, dateStr) => {
-        clearTimeout(tooltipTimer.current);
-        const el = tooltipRef.current;
-        if(!el) return;
-        tooltipTimer.current = setTimeout(() => {
-            const { byDate: bd, getNodeName: gNN, getZoneName: gZN, getZoneHex: gZH } = tooltipData.current;
-            const inspections = bd[dateStr] || [];
-            if(!inspections.length){ el.style.display='none'; return; }
+    // Ref callback: re-attaches native listeners every time the grid DOM node changes
+    const calGridRef = useCallback(grid => {
+        if(!grid) return;
 
-            // Build inner HTML
-            const dateLabel = new Date(dateStr+'T00:00:00Z')
-                .toLocaleDateString('es-VE',{weekday:'long',year:'numeric',month:'short',day:'numeric',timeZone:'UTC'})
-                .toUpperCase();
+        const onOver = e => {
+            const cell = e.target.closest('[data-date]');
+            if(!cell || !grid.contains(cell)) return;
+            const dateStr = cell.dataset.date;
+            const rect    = cell.getBoundingClientRect();
+            clearTimeout(ttTimer.current);
+            ttTimer.current = setTimeout(() => {
+                const { byDate: bd, getZoneName: gZN, getZoneHex: gZH, nodes: nds } = ttData.current;
+                const inspections = bd[dateStr] || [];
+                const el = tooltipRef.current;
+                if(!el || !inspections.length){ if(el) el.style.display='none'; return; }
 
-            const stCfg = s => {
-                const isPast = s.date < TODAY_STR && s.status==='PENDIENTE';
-                if(s.status==='COMPLETADO')   return {label:'✓ COMPLETADO',   color:'#6ee7b7',bg:'rgba(110,231,183,.18)'};
-                if(s.status==='EN EJECUCION') return {label:'● EN EJECUCIÓN', color:'#93c5fd',bg:'rgba(147,197,253,.18)'};
-                if(s.status==='EN PAUSA')     return {label:'⏸ EN PAUSA',     color:'#fcd34d',bg:'rgba(252,211,77,.18)'};
-                if(s.status==='ANULADA')      return {label:'✕ ANULADA',      color:'#fca5a5',bg:'rgba(252,165,165,.18)'};
-                if(isPast)                    return {label:'⚠ VENCIDA',       color:'#f87171',bg:'rgba(239,68,68,.2)'};
-                return                               {label:'○ PENDIENTE',    color:'#fdba74',bg:'rgba(253,186,116,.15)'};
-            };
+                const stCfg = s => {
+                    const isPast = s.date < TODAY_STR && s.status==='PENDIENTE';
+                    if(s.status==='COMPLETADO')   return {label:'✓ COMPLETADO',   color:'#6ee7b7', bg:'rgba(110,231,183,.18)'};
+                    if(s.status==='EN EJECUCION') return {label:'● EN EJECUCIÓN', color:'#93c5fd', bg:'rgba(147,197,253,.18)'};
+                    if(s.status==='EN PAUSA')     return {label:'⏸ EN PAUSA',     color:'#fcd34d', bg:'rgba(252,211,77,.18)'};
+                    if(s.status==='ANULADA')      return {label:'✕ ANULADA',      color:'#fca5a5', bg:'rgba(252,165,165,.18)'};
+                    if(isPast)                    return {label:'⚠ VENCIDA',       color:'#f87171', bg:'rgba(239,68,68,.2)'};
+                    return                               {label:'○ PENDIENTE',    color:'#fdba74', bg:'rgba(253,186,116,.15)'};
+                };
 
-            const rows = inspections.map((s,idx) => {
-                const nid   = s.nodeId||(s.nodes&&s.nodes[0]);
-                const hex   = gZH(s.zoneId);
-                const delay = calcDelay(s.date, s.status);
-                const cfg   = stCfg(s);
-                const name  = s.scope==='zone' ? `ZONA: ${gZN(s.zoneId)}` : gNN(nid);
-                return `<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-top:1px solid rgba(255,255,255,.07)">
-                    <div style="width:20px;height:20px;border-radius:50%;background:${hex};flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:.55rem;font-weight:900;color:#fff;box-shadow:0 0 0 2px ${hex}40">${idx+1}</div>
-                    <div style="flex:1;min-width:0">
-                        <div style="font-family:'JetBrains Mono',monospace;font-size:.7rem;font-weight:700;color:#f1f5f9;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${name}</div>
-                        <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center">
-                            <span style="font-size:.56rem;font-weight:800;padding:2px 8px;border-radius:999px;background:${cfg.bg};color:${cfg.color};border:1px solid ${cfg.color}40">${cfg.label}</span>
-                            ${delay>0?`<span style="font-size:.54rem;font-weight:800;color:#fca5a5;background:rgba(239,68,68,.18);padding:2px 6px;border-radius:999px">${delay}D RETRASO</span>`:''}
-                            ${s.odt?`<span style="font-size:.53rem;font-weight:800;color:#c4b5fd;background:rgba(168,85,247,.15);padding:1px 6px;border-radius:4px">ODT:${s.odt}</span>`:''}
+                const dateLabel = new Date(dateStr+'T00:00:00Z')
+                    .toLocaleDateString('es-VE',{weekday:'short',day:'numeric',month:'short',timeZone:'UTC'})
+                    .toUpperCase();
+
+                const rows = inspections.map((s, idx) => {
+                    const nid    = s.nodeId||(s.nodes&&s.nodes[0]);
+                    const hex    = gZH(s.zoneId);
+                    const cfg    = stCfg(s);
+                    const isZone = s.scope === 'zone';
+                    const delay  = (() => {
+                        if(s.status!=='PENDIENTE'&&s.status!=='EN PAUSA') return 0;
+                        const d = Math.floor((new Date(TODAY_STR+'T00:00:00Z') - new Date(s.date+'T00:00:00Z'))/86400000);
+                        return d > 0 ? d : 0;
+                    })();
+                    const title     = isZone ? `🗂 ${gZN(s.zoneId)}` : (nds.find(n=>n.id===nid)||{}).name||'—';
+                    const zoneNodes = isZone ? nds.filter(n=>n.zoneId===s.zoneId).map(n=>n.name).join(' · ') : '';
+                    return `<div style="display:flex;align-items:flex-start;gap:9px;padding:7px 0;border-top:1px solid rgba(255,255,255,.07)">
+                        <div style="min-width:20px;height:20px;border-radius:50%;background:${hex};display:flex;align-items:center;justify-content:center;font-size:.54rem;font-weight:900;color:#fff;flex-shrink:0;box-shadow:0 0 0 2px ${hex}44">${idx+1}</div>
+                        <div style="flex:1;min-width:0">
+                            <div style="font-family:'JetBrains Mono',monospace;font-size:.67rem;font-weight:700;color:#f1f5f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px">${title}</div>
+                            ${zoneNodes ? `<div style="font-size:.51rem;color:rgba(255,255,255,.32);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px">${zoneNodes}</div>` : ''}
+                            <div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center">
+                                <span style="font-size:.55rem;font-weight:800;padding:1px 7px;border-radius:999px;background:${cfg.bg};color:${cfg.color};border:1px solid ${cfg.color}44">${cfg.label}</span>
+                                ${delay>0 ? `<span style="font-size:.52rem;font-weight:800;color:#fca5a5;background:rgba(239,68,68,.18);padding:1px 6px;border-radius:999px">${delay}D RETRASO</span>` : ''}
+                                ${s.odt ? `<span style="font-size:.51rem;font-weight:800;color:#c4b5fd;background:rgba(168,85,247,.15);padding:1px 5px;border-radius:4px">ODT:${s.odt}</span>` : ''}
+                            </div>
+                            ${s.techs ? `<div style="margin-top:2px;font-size:.51rem;color:rgba(255,255,255,.28);font-weight:600">${s.techs}</div>` : ''}
                         </div>
-                        ${s.techs?`<div style="margin-top:3px;font-size:.53rem;color:rgba(255,255,255,.3);font-weight:600">${s.techs}</div>`:''}
-                    </div>
-                </div>`;
-            }).join('');
+                    </div>`;
+                }).join('');
 
-            el.innerHTML = `
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-                    <div style="font-size:.58rem;font-weight:800;letter-spacing:.1em;color:rgba(255,255,255,.4)">${dateLabel}</div>
-                    <div style="font-size:.58rem;font-weight:800;color:rgba(255,255,255,.3)">${inspections.length} INSP.</div>
-                </div>
-                ${rows}
-            `;
+                el.innerHTML = `
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:9px;gap:8px">
+                        <div style="font-size:.57rem;font-weight:800;letter-spacing:.1em;color:rgba(255,255,255,.4)">${dateLabel}</div>
+                        <div style="font-size:.57rem;font-weight:800;color:rgba(255,255,255,.3);white-space:nowrap">${inspections.length} INSP.</div>
+                    </div>${rows}`;
 
-            // Position
-            const rect = e.currentTarget.getBoundingClientRect();
-            const TW = 276;
-            let x = rect.left + rect.width/2 - TW/2;
-            let y = rect.bottom + 10;
-            if(x + TW > window.innerWidth - 8) x = window.innerWidth - TW - 8;
-            if(x < 8) x = 8;
-            const estH = 80 + inspections.length * 72;
-            if(y + estH > window.innerHeight - 8) y = rect.top - estH - 10;
-            el.style.left  = x + 'px';
-            el.style.top   = y + 'px';
-            el.style.display = 'block';
-        }, 110);
-    };
-    const hideTooltip = () => {
-        clearTimeout(tooltipTimer.current);
-        if(tooltipRef.current) tooltipRef.current.style.display = 'none';
-    };
+                const TW = 280;
+                let x = rect.left + rect.width/2 - TW/2;
+                let y = rect.bottom + 8;
+                if(x + TW > window.innerWidth - 8) x = window.innerWidth - TW - 8;
+                if(x < 8) x = 8;
+                const estH = 70 + inspections.length * 80;
+                if(y + estH > window.innerHeight - 8) y = rect.top - estH - 8;
+                if(y < 8) y = 8;
+                el.style.cssText += `;display:block;left:${x}px;top:${y}px;width:${TW}px`;
+            }, 130);
+        };
+
+        const onOut = e => {
+            const cell = e.target.closest('[data-date]');
+            if(!cell) return;
+            if(cell.contains(e.relatedTarget)) return;
+            clearTimeout(ttTimer.current);
+            if(tooltipRef.current) tooltipRef.current.style.display = 'none';
+        };
+
+        grid.addEventListener('mouseover', onOver);
+        grid.addEventListener('mouseout',  onOut);
+        // No cleanup needed since calGridRef callback will receive null when the node unmounts
+    }, []);
 
     // ── CRUD ──
     const db = (col) => {
@@ -993,7 +1010,11 @@ const App = () => {
             head:[['FECHA','ODT','ZONA','NODO','TÉCNICOS']],
             body:rows.map(s=>{
                 const nid = s.nodeId || (s.nodes&&s.nodes[0]);
-                return [formatDate(s.date),s.odt||'—',getZoneName(s.zoneId),getNodeName(nid),s.techs||'NO REG.'];
+                const isZone = s.scope === 'zone';
+                const nodeStr = isZone
+                    ? `ZONA: ${getZoneName(s.zoneId)} (${nodes.filter(n=>n.zoneId===s.zoneId).map(n=>n.name).join(', ')})`
+                    : getNodeName(nid);
+                return [formatDate(s.date),s.odt||'—',getZoneName(s.zoneId),nodeStr,s.techs||'NO REG.'];
             }),
             headStyles:{fillColor:[13,148,136]},
             styles:{fontSize:7,cellPadding:3},
@@ -1007,11 +1028,15 @@ const App = () => {
         if(!rows.length){alert("NO HAY DATOS A EXPORTAR.");return;}
         const data = rows.map(s=>{
             const nid = s.nodeId || (s.nodes&&s.nodes[0]);
+            const isZone = s.scope === 'zone';
+            const nodeStr = isZone
+                ? `ZONA COMPLETA: ${getZoneName(s.zoneId)} (${nodes.filter(n=>n.zoneId===s.zoneId).map(n=>n.name).join(', ')})`
+                : getNodeName(nid);
             return {
                 FECHA:    formatDate(s.date),
                 ODT:      s.odt||'',
                 ZONA:     getZoneName(s.zoneId),
-                NODO:     getNodeName(nid),
+                NODO:     nodeStr,
                 TÉCNICOS: s.techs||'NO REGISTRADO',
             };
         });
@@ -1111,8 +1136,8 @@ const App = () => {
                     ))}
                 </div>
 
-                {/* Cells */}
-                <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:'4px'}}>
+                {/* Cells — calGridRef enables native delegated mouseover for tooltip */}
+                <div ref={calGridRef} style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:'4px'}}>
                     {cells.map((day,idx) => {
                         if(!day) return <div key={`e${idx}`} />;
                         const ds = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
@@ -1124,9 +1149,8 @@ const App = () => {
                         return (
                             <div
                                 key={idx}
+                                data-date={ds}
                                 onClick={()=>setSelDate(ds)}
-                                onMouseEnter={e=>{if(ds_scheds.length>0) showTooltip(e,ds);}}
-                                onMouseLeave={hideTooltip}
                                 className={`cal-cell${isSelected?' cal-active':''}`}
                             >
                                 {hasOverdue && <span className="cell-overdue-dot" />}
@@ -1139,7 +1163,6 @@ const App = () => {
                                                 key={i}
                                                 className={`cal-dot ${!ic?getZoneColor(s.zoneId):''} ${s.status==='EN EJECUCION'?'animate-pulse':''}`}
                                                 style={ic?{background:ic}:{}}
-                                                title={`${getZoneName(s.zoneId)} · ${s.status}`}
                                             />
                                         );
                                     })}
@@ -1331,13 +1354,27 @@ const App = () => {
                                     <div style={{display:'flex',flexDirection:'column',gap:4}}>
                                         {upcomingWarnings.map(s=>{
                                             const nid = s.nodeId||(s.nodes&&s.nodes[0]);
+                                            const isZone = s.scope === 'zone';
+                                            const label = isZone
+                                                ? `🗂 ${getZoneName(s.zoneId)}`
+                                                : getNodeName(nid);
+                                            const subLabel = isZone
+                                                ? nodes.filter(n=>n.zoneId===s.zoneId).map(n=>n.name).join(' · ')
+                                                : null;
                                             const daysLeft = Math.ceil((new Date(s.date+'T00:00:00Z') - new Date(TODAY_STR+'T00:00:00Z')) / 86400000);
                                             return (
                                                 <div key={s.id} style={{display:'flex',alignItems:'center',gap:8,background:'rgba(255,255,255,.5)',borderRadius:8,padding:'6px 10px',cursor:'pointer'}}
                                                     onClick={()=>{ setSelDate(s.date); setCurMonth(new Date(s.date.slice(0,7)+'-01T00:00:00Z')); }}>
-                                                    <span style={{fontSize:'.56rem',fontFamily:"'JetBrains Mono',monospace",fontWeight:700,color:'#78350f',flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
-                                                        {getNodeName(nid)}
-                                                    </span>
+                                                    <div style={{flex:1,minWidth:0}}>
+                                                        <div style={{fontSize:'.56rem',fontFamily:"'JetBrains Mono',monospace",fontWeight:700,color:'#78350f',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                                                            {label}
+                                                        </div>
+                                                        {subLabel && (
+                                                            <div style={{fontSize:'.52rem',fontWeight:600,color:'#92400e',opacity:.7,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',marginTop:1}}>
+                                                                {subLabel}
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                     <span style={{fontSize:'.55rem',fontWeight:800,color:'var(--muted)',whiteSpace:'nowrap'}}>{formatDate(s.date).split(',')[0]}</span>
                                                     <span style={{fontSize:'.54rem',fontWeight:900,color:daysLeft===0?'#dc2626':'#b45309',background:daysLeft===0?'rgba(220,38,38,.15)':'rgba(180,83,9,.15)',padding:'2px 7px',borderRadius:999,whiteSpace:'nowrap'}}>
                                                         {daysLeft===0?'HOY':daysLeft===1?'MAÑANA':`${daysLeft}D`}
@@ -1579,12 +1616,22 @@ const App = () => {
                                             ) : (
                                                 filtered.map(s => {
                                                     const nid = s.nodeId || (s.nodes&&s.nodes[0]);
+                                                    const isZone = s.scope === 'zone';
+                                                    const nodeLabel = isZone
+                                                        ? `🗂 ${getZoneName(s.zoneId)}`
+                                                        : getNodeName(nid);
+                                                    const nodeSubLabel = isZone
+                                                        ? nodes.filter(n=>n.zoneId===s.zoneId).map(n=>n.name).join(', ')
+                                                        : null;
                                                     return (
                                                     <tr key={s.id}>
                                                         <td style={{whiteSpace:'nowrap',fontFamily:"'JetBrains Mono',monospace",fontSize:'.62rem'}}>{formatDate(s.date)}</td>
                                                         <td>{s.odt ? <span className="badge b-odt">{s.odt}</span> : <span style={{color:'var(--muted)'}}>—</span>}</td>
                                                         <td><div className="zone-chip"><span className={`zdot ${getZoneColor(s.zoneId)}`} />{getZoneName(s.zoneId)}</div></td>
-                                                        <td><span className="node-tag">{getNodeName(nid)}</span></td>
+                                                        <td>
+                                                            <span className="node-tag">{nodeLabel}</span>
+                                                            {nodeSubLabel && <div style={{fontSize:'.55rem',color:'var(--muted)',marginTop:3}}>{nodeSubLabel}</div>}
+                                                        </td>
                                                         <td style={{color:'var(--primary)',fontWeight:800}}>{s.techs||'NO REGISTRADO'}</td>
                                                     </tr>
                                                     );
@@ -1714,4 +1761,3 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 </script>
 </body>
 </html>
-
