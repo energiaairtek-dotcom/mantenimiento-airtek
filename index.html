@@ -11,6 +11,7 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -384,7 +385,7 @@ const SchCard = ({ sch, helpers }) => {
             activeAction, activeEdit,
             onStart, onPauseCancel, onEdit,
             onCancelAction, onCancelEdit,
-            onStatusChange, onDelete, isAdmin } = helpers;
+            onStatusChange, onDelete, onReschedule, isAdmin } = helpers;
 
     // Local form state — completely isolated from App
     const [localTechs,  setLocalTechs]  = React.useState('');
@@ -411,6 +412,7 @@ const SchCard = ({ sch, helpers }) => {
     const showEdit   = activeEdit   === sch.id;
     const showBtns   = !showStart && !showPause && !showCancel && !showEdit;
     const canEdit    = isExecuting || isPaused || isCompleted;
+    const isOverdue  = isPast; // alias for clarity
 
     const handleOpenStart  = () => { setLocalTechs(sch.techs||''); setLocalOdt(sch.odt||''); onStart(sch.id); };
     const handleOpenPause  = () => { setLocalReason(''); onPauseCancel(sch.id, 'PAUSE'); };
@@ -460,6 +462,11 @@ const SchCard = ({ sch, helpers }) => {
                         <button onClick={handleOpenStart}  className="btn btn-start"><PlayIco /> INICIAR</button>
                         <button onClick={handleOpenPause}  className="btn btn-pause"><PauseIco /> PAUSAR</button>
                         <button onClick={handleOpenCancel} className="btn btn-cancel"><BanIco /> ANULAR</button>
+                        {isOverdue && (
+                            <button onClick={()=>onReschedule(sch)} className="btn btn-reopen" style={{background:'rgba(245,158,11,.12)',color:'#92400e',borderColor:'rgba(245,158,11,.4)'}}>
+                                📅 REPROGRAMAR
+                            </button>
+                        )}
                     </>}
                     {isExecuting && <>
                         <button onClick={()=>onStatusChange(sch,'COMPLETADO')} className="btn btn-complete"><CheckIco /> COMPLETAR</button>
@@ -569,8 +576,19 @@ const App = () => {
     const [newNode,setNewNode]     = useState({ name:'', zoneId:'' });
     const [newSch,setNewSch]       = useState({ date:'', zoneId:'', selectedNodes:[], recurring:false, repeatDays:30 });
 
+    // Reschedule modal
+    const [reschedule, setReschedule] = useState({ open:false, sch:null, newDate:'' });
+    // Upcoming warning config (days before expiry to show alert)
+    const [warnDays, setWarnDays]     = useState(3);
+    const [showWarnCfg, setShowWarnCfg] = useState(false);
+
     // delete confirm
     const [delP,setDelP]           = useState({ isOpen:false, schedule:null });
+
+    // History date filters
+    const [histFilterDay,   setHistFilterDay]   = useState('');
+    const [histFilterMonth, setHistFilterMonth] = useState('');
+    const [histFilterYear,  setHistFilterYear]  = useState('');
 
     // Calendar state
     const [curMonth,setCurMonth]   = useState(new Date());
@@ -672,6 +690,17 @@ const App = () => {
     }, [schedules]);
 
     const nodesInZone = useMemo(() => nodes.filter(n=>n.zoneId===newSch.zoneId), [nodes, newSch.zoneId]);
+
+    // Upcoming inspections expiring within warnDays
+    const upcomingWarnings = useMemo(() => {
+        const limit = new Date(TODAY_STR+'T00:00:00Z');
+        limit.setUTCDate(limit.getUTCDate() + warnDays);
+        return schedules.filter(s => {
+            if(s.status !== 'PENDIENTE') return false;
+            const d = new Date(s.date+'T00:00:00Z');
+            return d >= new Date(TODAY_STR+'T00:00:00Z') && d <= limit;
+        }).sort((a,b)=>new Date(a.date)-new Date(b.date));
+    }, [schedules, warnDays]);
 
     // ── Calendar nav ──
     const prevMonth = () => setCurMonth(new Date(curMonth.getFullYear(), curMonth.getMonth()-1, 1));
@@ -876,11 +905,10 @@ const App = () => {
         setDelP({isOpen:false,schedule:null});
     };
 
-    const exportPDF = () => {
+    const exportPDF = (rows) => {
         if(!window.jspdf?.jsPDF){alert("PDF cargando...");return;}
         const docPdf = new window.jspdf.jsPDF();
-        const done = schedules.filter(s=>s.status==='COMPLETADO');
-        if(!done.length){alert("NO HAY COMPLETADOS.");return;}
+        if(!rows.length){alert("NO HAY DATOS A EXPORTAR.");return;}
         docPdf.setFontSize(16); docPdf.setTextColor(13,148,136);
         docPdf.text("HISTORIAL PM – AIRTEK ZULIA", 14, 20);
         docPdf.setFontSize(9); docPdf.setTextColor(100,116,139);
@@ -888,7 +916,7 @@ const App = () => {
         docPdf.autoTable({
             startY:34,
             head:[['FECHA','ODT','ZONA','NODO','TÉCNICOS']],
-            body:done.map(s=>{
+            body:rows.map(s=>{
                 const nid = s.nodeId || (s.nodes&&s.nodes[0]);
                 return [formatDate(s.date),s.odt||'—',getZoneName(s.zoneId),getNodeName(nid),s.techs||'NO REG.'];
             }),
@@ -897,6 +925,45 @@ const App = () => {
             alternateRowStyles:{fillColor:[248,250,252]}
         });
         docPdf.save("Historial_Airtek.pdf");
+    };
+
+    const exportExcel = (rows) => {
+        if(!window.XLSX){alert("Excel cargando...");return;}
+        if(!rows.length){alert("NO HAY DATOS A EXPORTAR.");return;}
+        const data = rows.map(s=>{
+            const nid = s.nodeId || (s.nodes&&s.nodes[0]);
+            return {
+                FECHA:    formatDate(s.date),
+                ODT:      s.odt||'',
+                ZONA:     getZoneName(s.zoneId),
+                NODO:     getNodeName(nid),
+                TÉCNICOS: s.techs||'NO REGISTRADO',
+            };
+        });
+        const ws = window.XLSX.utils.json_to_sheet(data);
+        // Column widths
+        ws['!cols'] = [{wch:28},{wch:14},{wch:18},{wch:22},{wch:30}];
+        const wb = window.XLSX.utils.book_new();
+        window.XLSX.utils.book_append_sheet(wb, ws, 'Historial PM');
+        window.XLSX.writeFile(wb, 'Historial_Airtek.xlsx');
+    };
+
+    // Reschedule overdue inspection to a new date
+    const handleReschedule = async () => {
+        const { sch, newDate } = reschedule;
+        if(!newDate){ alert("SELECCIONE UNA NUEVA FECHA."); return; }
+        if(newDate <= TODAY_STR){ alert("LA FECHA DEBE SER FUTURA."); return; }
+        // Check capacity on target date
+        const existing = schedules.filter(s=>s.date===newDate).length;
+        if(existing >= 5){ alert("ESE DÍA YA TIENE 5 INSPECCIONES. ELIJA OTRO."); return; }
+        const { updateDoc } = window.FirebaseSDK;
+        try {
+            const upd = { date: newDate, status: 'PENDIENTE', reason: '' };
+            // If recurring, reset the series anchor so intervals count from new date
+            if(sch.isRecurring) upd.groupId = null; // detach from old series
+            await updateDoc(docRef('pm_schedules', sch.id), upd);
+            setReschedule({ open:false, sch:null, newDate:'' });
+        } catch(e){ console.error(e); alert("ERROR: "+e.message); }
     };
 
     // ════════════════════════════════════════════
@@ -1168,6 +1235,36 @@ const App = () => {
         <div style={{minHeight:'100vh',paddingBottom:96}}>
             <DayTooltip />
 
+            {/* ── RESCHEDULE MODAL ── */}
+            {reschedule.open && (
+                <div style={{position:'fixed',inset:0,background:'rgba(13,27,42,.7)',zIndex:9000,display:'flex',alignItems:'center',justifyContent:'center',padding:16}} onClick={()=>setReschedule({open:false,sch:null,newDate:''})}>
+                    <div style={{background:'var(--surface)',borderRadius:16,padding:'24px 22px',width:'100%',maxWidth:380,boxShadow:'0 24px 64px rgba(0,0,0,.25)'}} onClick={e=>e.stopPropagation()}>
+                        <div style={{fontSize:'.75rem',fontWeight:900,letterSpacing:'.08em',color:'var(--primary)',marginBottom:4}}>REPROGRAMAR INSPECCIÓN</div>
+                        <div style={{fontSize:'.58rem',color:'var(--muted)',fontWeight:700,letterSpacing:'.1em',marginBottom:16}}>
+                            NODO: {getNodeName(reschedule.sch?.nodeId||(reschedule.sch?.nodes&&reschedule.sch.nodes[0]))}
+                        </div>
+                        <div style={{fontSize:'.57rem',fontWeight:800,color:'var(--muted)',letterSpacing:'.1em',marginBottom:6}}>NUEVA FECHA</div>
+                        <input
+                            type="date"
+                            className="prompt-inp"
+                            style={{width:'100%',marginBottom:16}}
+                            min={TODAY_STR}
+                            value={reschedule.newDate}
+                            onChange={e=>setReschedule(r=>({...r,newDate:e.target.value}))}
+                        />
+                        {reschedule.sch?.isRecurring && (
+                            <div style={{fontSize:'.57rem',fontWeight:700,color:'#f59e0b',background:'rgba(245,158,11,.1)',border:'1px solid rgba(245,158,11,.3)',borderRadius:8,padding:'8px 12px',marginBottom:16,letterSpacing:'.06em'}}>
+                                ⚠ ESTA INSPECCIÓN ES RECURRENTE. AL REPROGRAMAR SE DESVINCULARÁ DE LA SERIE Y LOS INTERVALOS SE CONTARÁN DESDE LA NUEVA FECHA.
+                            </div>
+                        )}
+                        <div style={{display:'flex',gap:8}}>
+                            <button onClick={()=>setReschedule({open:false,sch:null,newDate:''})} className="btn btn-reopen" style={{flex:1}}>CANCELAR</button>
+                            <button onClick={handleReschedule} className="btn btn-start" style={{flex:2}}>CONFIRMAR NUEVA FECHA</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* ── HEADER ── */}
             <header className="app-header" style={{padding:'14px 20px'}}>
                 <div style={{maxWidth:740,margin:'0 auto',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
@@ -1248,6 +1345,50 @@ const App = () => {
 
                             <Calendar />
 
+                            {/* Upcoming expiry warning banner */}
+                            {upcomingWarnings.length > 0 && (
+                                <div style={{background:'rgba(245,158,11,.1)',border:'1px solid rgba(245,158,11,.35)',borderRadius:12,padding:'12px 16px',display:'flex',flexDirection:'column',gap:8}}>
+                                    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
+                                        <div style={{display:'flex',alignItems:'center',gap:8}}>
+                                            <span style={{fontSize:'1rem'}}>⚠️</span>
+                                            <span style={{fontSize:'.65rem',fontWeight:900,color:'#92400e',letterSpacing:'.08em'}}>
+                                                {upcomingWarnings.length} INSPECCIÓN{upcomingWarnings.length>1?'ES':''} POR VENCER EN {warnDays} DÍA{warnDays>1?'S':''}
+                                            </span>
+                                        </div>
+                                        <button onClick={()=>setShowWarnCfg(v=>!v)} style={{fontSize:'.52rem',fontWeight:800,color:'#92400e',background:'rgba(245,158,11,.2)',border:'1px solid rgba(245,158,11,.3)',borderRadius:6,padding:'3px 8px',cursor:'pointer',letterSpacing:'.08em',whiteSpace:'nowrap'}}>
+                                            ⚙ {showWarnCfg?'CERRAR':'CONFIGURAR'}
+                                        </button>
+                                    </div>
+                                    {showWarnCfg && (
+                                        <div style={{display:'flex',alignItems:'center',gap:8,paddingTop:8,borderTop:'1px solid rgba(245,158,11,.2)'}}>
+                                            <span style={{fontSize:'.57rem',fontWeight:800,color:'#92400e',letterSpacing:'.08em',whiteSpace:'nowrap'}}>AVISAR CON</span>
+                                            <input type="number" min="1" max="30" value={warnDays}
+                                                onChange={e=>setWarnDays(Math.max(1,Math.min(30,+e.target.value)))}
+                                                style={{width:56,padding:'4px 8px',borderRadius:6,border:'1px solid rgba(245,158,11,.4)',background:'rgba(255,255,255,.7)',fontFamily:"'Exo 2',sans-serif",fontWeight:800,fontSize:'.7rem',textAlign:'center'}} />
+                                            <span style={{fontSize:'.57rem',fontWeight:800,color:'#92400e',letterSpacing:'.08em'}}>DÍAS DE ANTICIPACIÓN</span>
+                                        </div>
+                                    )}
+                                    <div style={{display:'flex',flexDirection:'column',gap:4}}>
+                                        {upcomingWarnings.map(s=>{
+                                            const nid = s.nodeId||(s.nodes&&s.nodes[0]);
+                                            const daysLeft = Math.ceil((new Date(s.date+'T00:00:00Z') - new Date(TODAY_STR+'T00:00:00Z')) / 86400000);
+                                            return (
+                                                <div key={s.id} style={{display:'flex',alignItems:'center',gap:8,background:'rgba(255,255,255,.5)',borderRadius:8,padding:'6px 10px',cursor:'pointer'}}
+                                                    onClick={()=>{ setSelDate(s.date); setCurMonth(new Date(s.date.slice(0,7)+'-01T00:00:00Z')); }}>
+                                                    <span style={{fontSize:'.56rem',fontFamily:"'JetBrains Mono',monospace",fontWeight:700,color:'#78350f',flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                                                        {getNodeName(nid)}
+                                                    </span>
+                                                    <span style={{fontSize:'.55rem',fontWeight:800,color:'var(--muted)',whiteSpace:'nowrap'}}>{formatDate(s.date).split(',')[0]}</span>
+                                                    <span style={{fontSize:'.54rem',fontWeight:900,color:daysLeft===0?'#dc2626':'#b45309',background:daysLeft===0?'rgba(220,38,38,.15)':'rgba(180,83,9,.15)',padding:'2px 7px',borderRadius:999,whiteSpace:'nowrap'}}>
+                                                        {daysLeft===0?'HOY':daysLeft===1?'MAÑANA':`${daysLeft}D`}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Day detail */}
                             <div>
                                 <div className="sec-title" style={{marginBottom:12}}>
@@ -1283,6 +1424,7 @@ const App = () => {
                                                 onCancelEdit:   ()=>setActiveEdit(null),
                                                 onStatusChange: handleStatusChange,
                                                 onDelete: promptDelete,
+                                                onReschedule: (s)=>setReschedule({open:true,sch:s,newDate:''}),
                                                 isAdmin,
                                             }} />
                                         ))}
@@ -1367,8 +1509,14 @@ const App = () => {
                             if(histFilterZone && s.zoneId !== histFilterZone) return false;
                             if(histFilterNode && nid !== histFilterNode) return false;
                             if(histFilterTech && !(s.techs||'').toUpperCase().includes(histFilterTech.toUpperCase())) return false;
+                            if(histFilterYear  && !s.date.startsWith(histFilterYear))  return false;
+                            if(histFilterMonth && s.date.slice(5,7) !== histFilterMonth.padStart(2,'0')) return false;
+                            if(histFilterDay   && s.date.slice(8,10) !== histFilterDay.padStart(2,'0'))  return false;
                             return true;
                         }).sort((a,b)=>new Date(b.date)-new Date(a.date));
+
+                        const clearAll = () => { setHistFilterZone(''); setHistFilterNode(''); setHistFilterTech(''); setHistFilterDay(''); setHistFilterMonth(''); setHistFilterYear(''); };
+                        const hasFilter = histFilterZone||histFilterNode||histFilterTech||histFilterDay||histFilterMonth||histFilterYear;
 
                         return (
                         <>
@@ -1380,7 +1528,13 @@ const App = () => {
                                         {filtered.length} DE {completed.length} MANTENIMIENTOS
                                     </div>
                                 </div>
-                                <button onClick={exportPDF} className="btn btn-dark" style={{gap:7}}><PdfIco /> EXPORTAR PDF</button>
+                                <div style={{display:'flex',gap:7}}>
+                                    <button onClick={()=>exportPDF(filtered)} className="btn btn-dark" style={{gap:6}}><PdfIco /> PDF</button>
+                                    <button onClick={()=>exportExcel(filtered)} className="btn btn-dark" style={{gap:6,background:'rgba(34,197,94,.12)',color:'#15803d',border:'1px solid rgba(34,197,94,.3)'}}>
+                                        <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
+                                        EXCEL
+                                    </button>
+                                </div>
                             </div>
 
                             {/* Filters */}
@@ -1395,15 +1549,26 @@ const App = () => {
                                     {(histFilterZone ? nodes.filter(n=>n.zoneId===histFilterZone) : nodes)
                                         .map(n=><option key={n.id} value={n.id}>{n.name}</option>)}
                                 </select>
-                                <input
-                                    className="filter-select"
-                                    style={{minWidth:140}}
-                                    placeholder="TÉCNICO..."
-                                    value={histFilterTech}
-                                    onChange={e=>setHistFilterTech(e.target.value)}
-                                />
-                                {(histFilterZone||histFilterNode||histFilterTech) && (
-                                    <button className="filter-clear" onClick={()=>{setHistFilterZone('');setHistFilterNode('');setHistFilterTech('');}}>✕ LIMPIAR</button>
+                                <input className="filter-select" style={{minWidth:130}} placeholder="TÉCNICO..."
+                                    value={histFilterTech} onChange={e=>setHistFilterTech(e.target.value)} />
+                            </div>
+                            {/* Date filters row */}
+                            <div className="filter-bar" style={{flexWrap:'wrap',gap:8}}>
+                                <span className="filter-lbl">FECHA:</span>
+                                <select className="filter-select" value={histFilterDay} onChange={e=>setHistFilterDay(e.target.value)}>
+                                    <option value="">CUALQUIER DÍA</option>
+                                    {Array.from({length:31},(_,i)=>i+1).map(d=><option key={d} value={String(d).padStart(2,'0')}>{String(d).padStart(2,'0')}</option>)}
+                                </select>
+                                <select className="filter-select" value={histFilterMonth} onChange={e=>setHistFilterMonth(e.target.value)}>
+                                    <option value="">CUALQUIER MES</option>
+                                    {['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'].map((m,i)=>(
+                                        <option key={i+1} value={String(i+1).padStart(2,'0')}>{m}</option>
+                                    ))}
+                                </select>
+                                <input className="filter-select" style={{width:80}} type="number" placeholder="AÑO" min="2020" max="2099"
+                                    value={histFilterYear} onChange={e=>setHistFilterYear(e.target.value)} />
+                                {hasFilter && (
+                                    <button className="filter-clear" onClick={clearAll}>✕ LIMPIAR TODO</button>
                                 )}
                             </div>
 
