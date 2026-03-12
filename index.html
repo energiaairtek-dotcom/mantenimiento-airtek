@@ -618,9 +618,8 @@ const App = () => {
     const [delP,setDelP]           = useState({ isOpen:false, schedule:null });
 
     // History date filters
-    const [histFilterDay,   setHistFilterDay]   = useState('');
-    const [histFilterMonth, setHistFilterMonth] = useState('');
-    const [histFilterYear,  setHistFilterYear]  = useState('');
+    const [histFilterDateFrom, setHistFilterDateFrom] = useState('');
+    const [histFilterDateTo,   setHistFilterDateTo]   = useState('');
 
     // Calendar state
     const [curMonth,setCurMonth]   = useState(new Date());
@@ -1532,14 +1531,13 @@ const App = () => {
                             if(histFilterZone && s.zoneId !== histFilterZone) return false;
                             if(histFilterNode && nid !== histFilterNode) return false;
                             if(histFilterTech && !(s.techs||'').toUpperCase().includes(histFilterTech.toUpperCase())) return false;
-                            if(histFilterYear  && !s.date.startsWith(histFilterYear))  return false;
-                            if(histFilterMonth && s.date.slice(5,7) !== histFilterMonth.padStart(2,'0')) return false;
-                            if(histFilterDay   && s.date.slice(8,10) !== histFilterDay.padStart(2,'0'))  return false;
+                            if(histFilterDateFrom && s.date < histFilterDateFrom) return false;
+                            if(histFilterDateTo   && s.date > histFilterDateTo)   return false;
                             return true;
                         }).sort((a,b)=>new Date(b.date)-new Date(a.date));
 
-                        const clearAll = () => { setHistFilterZone(''); setHistFilterNode(''); setHistFilterTech(''); setHistFilterDay(''); setHistFilterMonth(''); setHistFilterYear(''); };
-                        const hasFilter = histFilterZone||histFilterNode||histFilterTech||histFilterDay||histFilterMonth||histFilterYear;
+                        const clearAll = () => { setHistFilterZone(''); setHistFilterNode(''); setHistFilterTech(''); setHistFilterDateFrom(''); setHistFilterDateTo(''); };
+                        const hasFilter = histFilterZone||histFilterNode||histFilterTech||histFilterDateFrom||histFilterDateTo;
 
                         return (
                         <>
@@ -1560,7 +1558,7 @@ const App = () => {
                                 </div>
                             </div>
 
-                            {/* Filters */}
+                            {/* Filters row 1 — Zone / Node / Tech */}
                             <div className="filter-bar" style={{flexWrap:'wrap',gap:8}}>
                                 <span className="filter-lbl">FILTRAR:</span>
                                 <select className="filter-select" value={histFilterZone} onChange={e=>{setHistFilterZone(e.target.value);setHistFilterNode('');}}>
@@ -1575,21 +1573,30 @@ const App = () => {
                                 <input className="filter-select" style={{minWidth:130}} placeholder="TÉCNICO..."
                                     value={histFilterTech} onChange={e=>setHistFilterTech(e.target.value)} />
                             </div>
-                            {/* Date filters row */}
-                            <div className="filter-bar" style={{flexWrap:'wrap',gap:8}}>
-                                <span className="filter-lbl">FECHA:</span>
-                                <select className="filter-select" value={histFilterDay} onChange={e=>setHistFilterDay(e.target.value)}>
-                                    <option value="">CUALQUIER DÍA</option>
-                                    {Array.from({length:31},(_,i)=>i+1).map(d=><option key={d} value={String(d).padStart(2,'0')}>{String(d).padStart(2,'0')}</option>)}
-                                </select>
-                                <select className="filter-select" value={histFilterMonth} onChange={e=>setHistFilterMonth(e.target.value)}>
-                                    <option value="">CUALQUIER MES</option>
-                                    {['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'].map((m,i)=>(
-                                        <option key={i+1} value={String(i+1).padStart(2,'0')}>{m}</option>
-                                    ))}
-                                </select>
-                                <input className="filter-select" style={{width:80}} type="number" placeholder="AÑO" min="2020" max="2099"
-                                    value={histFilterYear} onChange={e=>setHistFilterYear(e.target.value)} />
+
+                            {/* Filters row 2 — Date range */}
+                            <div className="filter-bar" style={{flexWrap:'wrap',gap:8,alignItems:'center'}}>
+                                <span className="filter-lbl">RANGO:</span>
+                                <div style={{display:'flex',alignItems:'center',gap:6}}>
+                                    <span style={{fontSize:'.58rem',fontWeight:800,color:'var(--muted)',letterSpacing:'.08em',whiteSpace:'nowrap'}}>DESDE</span>
+                                    <input type="date" className="filter-select"
+                                        style={{width:'auto',cursor:'pointer'}}
+                                        value={histFilterDateFrom}
+                                        onChange={e=>setHistFilterDateFrom(e.target.value)} />
+                                </div>
+                                <div style={{display:'flex',alignItems:'center',gap:6}}>
+                                    <span style={{fontSize:'.58rem',fontWeight:800,color:'var(--muted)',letterSpacing:'.08em',whiteSpace:'nowrap'}}>HASTA</span>
+                                    <input type="date" className="filter-select"
+                                        style={{width:'auto',cursor:'pointer'}}
+                                        value={histFilterDateTo}
+                                        onChange={e=>setHistFilterDateTo(e.target.value)} />
+                                </div>
+                                {(histFilterDateFrom || histFilterDateTo) && (
+                                    <button className="filter-clear" style={{background:'rgba(13,148,136,.1)',color:'var(--primary)',border:'1px solid rgba(13,148,136,.25)'}}
+                                        onClick={()=>{setHistFilterDateFrom('');setHistFilterDateTo('');}}>
+                                        ✕ LIMPIAR RANGO
+                                    </button>
+                                )}
                                 {hasFilter && (
                                     <button className="filter-clear" onClick={clearAll}>✕ LIMPIAR TODO</button>
                                 )}
