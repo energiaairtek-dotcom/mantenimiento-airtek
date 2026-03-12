@@ -388,9 +388,10 @@ const SchCard = ({ sch, helpers }) => {
             onStatusChange, onDelete, onReschedule, isAdmin } = helpers;
 
     // Local form state — completely isolated from App
-    const [localTechs,  setLocalTechs]  = React.useState('');
-    const [localOdt,    setLocalOdt]    = React.useState('');
-    const [localReason, setLocalReason] = React.useState('');
+    const [localTechs,   setLocalTechs]   = React.useState('');
+    const [localOdt,     setLocalOdt]     = React.useState('');
+    const [localOdtLink, setLocalOdtLink] = React.useState('');
+    const [localReason,  setLocalReason]  = React.useState('');
 
     const isCompleted = sch.status==='COMPLETADO';
     const isExecuting = sch.status==='EN EJECUCION';
@@ -414,10 +415,10 @@ const SchCard = ({ sch, helpers }) => {
     const canEdit    = isExecuting || isPaused || isCompleted;
     const isOverdue  = isPast; // alias for clarity
 
-    const handleOpenStart  = () => { setLocalTechs(sch.techs||''); setLocalOdt(sch.odt||''); onStart(sch.id); };
+    const handleOpenStart  = () => { setLocalTechs(sch.techs||''); setLocalOdt(sch.odt||''); setLocalOdtLink(sch.odtLink||''); onStart(sch.id); };
     const handleOpenPause  = () => { setLocalReason(''); onPauseCancel(sch.id, 'PAUSE'); };
     const handleOpenCancel = () => { setLocalReason(''); onPauseCancel(sch.id, 'CANCEL'); };
-    const handleOpenEdit   = () => { setLocalTechs(sch.techs||''); setLocalOdt(sch.odt||''); onEdit(sch.id); };
+    const handleOpenEdit   = () => { setLocalTechs(sch.techs||''); setLocalOdt(sch.odt||''); setLocalOdtLink(sch.odtLink||''); onEdit(sch.id); };
 
     return (
         <div className={`sch-card ${sCls}`}>
@@ -433,11 +434,14 @@ const SchCard = ({ sch, helpers }) => {
                 {sch.isRecurring && <span className="badge b-recurring"><RepeatIco /> CADA {sch.repeatDays}D</span>}
             </div>
 
-            {/* Node */}
+            {/* Node / Zone */}
             <div className={`node-box${isCancelled?' opacity-50':''}`} style={{marginBottom:10}}>
-                <div className="node-box-lbl">NODO A INTERVENIR</div>
+                <div className="node-box-lbl">{sch.scope==='zone'?'ZONA A INTERVENIR':'NODO A INTERVENIR'}</div>
                 <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
-                    {nid && <span className="node-tag">{getNodeName(nid)}</span>}
+                    {sch.scope==='zone'
+                        ? <span className="node-tag" style={{background:'rgba(13,148,136,.1)',color:'var(--primary)',borderColor:'var(--primary-l)'}}>ZONA COMPLETA: {getZoneName(sch.zoneId)}</span>
+                        : nid ? <span className="node-tag">{getNodeName(nid)}</span> : null
+                    }
                 </div>
             </div>
 
@@ -450,8 +454,19 @@ const SchCard = ({ sch, helpers }) => {
 
             {/* Techs */}
             {sch.techs && !isCancelled && (
-                <div className="tech-chip" style={{marginBottom:10}}>
+                <div className="tech-chip" style={{marginBottom:8}}>
                     <UserIco /> TÉCNICOS: <strong>{sch.techs}</strong>
+                </div>
+            )}
+            {/* ODT Link */}
+            {sch.odtLink && !isCancelled && (
+                <div style={{marginBottom:10}}>
+                    <a href={sch.odtLink} target="_blank" rel="noopener noreferrer"
+                        style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:'.6rem',fontWeight:800,color:'#7c3aed',background:'rgba(168,85,247,.1)',border:'1px solid rgba(168,85,247,.3)',padding:'5px 12px',borderRadius:8,textDecoration:'none',letterSpacing:'.06em'}}
+                        onClick={e=>e.stopPropagation()}>
+                        <svg width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                        ABRIR ODT EN SISTEMA
+                    </a>
                 </div>
             )}
 
@@ -462,11 +477,9 @@ const SchCard = ({ sch, helpers }) => {
                         <button onClick={handleOpenStart}  className="btn btn-start"><PlayIco /> INICIAR</button>
                         <button onClick={handleOpenPause}  className="btn btn-pause"><PauseIco /> PAUSAR</button>
                         <button onClick={handleOpenCancel} className="btn btn-cancel"><BanIco /> ANULAR</button>
-                        {isOverdue && (
-                            <button onClick={()=>onReschedule(sch)} className="btn btn-reopen" style={{background:'rgba(245,158,11,.12)',color:'#92400e',borderColor:'rgba(245,158,11,.4)'}}>
-                                📅 REPROGRAMAR
-                            </button>
-                        )}
+                        <button onClick={()=>onReschedule(sch)} className="btn btn-reopen" style={{background:'rgba(245,158,11,.1)',color:'#92400e',borderColor:'rgba(245,158,11,.35)'}}>
+                            📅 REPROGRAMAR
+                        </button>
                     </>}
                     {isExecuting && <>
                         <button onClick={()=>onStatusChange(sch,'COMPLETADO')} className="btn btn-complete"><CheckIco /> COMPLETAR</button>
@@ -476,6 +489,9 @@ const SchCard = ({ sch, helpers }) => {
                     {isPaused && <>
                         <button onClick={()=>onStatusChange(sch,'EN EJECUCION')} className="btn btn-resume"><PlayIco /> REANUDAR</button>
                         <button onClick={handleOpenCancel} className="btn btn-cancel"><BanIco /> ANULAR</button>
+                        <button onClick={()=>onReschedule(sch)} className="btn btn-reopen" style={{background:'rgba(245,158,11,.1)',color:'#92400e',borderColor:'rgba(245,158,11,.35)'}}>
+                            📅 REPROGRAMAR
+                        </button>
                     </>}
                     {(isCancelled||isCompleted) && (
                         <button onClick={()=>onStatusChange(sch,'PENDIENTE')} className="btn btn-reopen">↺ REABRIR</button>
@@ -499,15 +515,23 @@ const SchCard = ({ sch, helpers }) => {
                             <input className="prompt-inp" placeholder="EJ: L. RAMOS, D. CHACÍN"
                                 value={localTechs} onChange={e=>setLocalTechs(e.target.value)} />
                         </div>
-                        <div className="form-group">
-                            <label className="form-lbl" style={{color:'#7c3aed'}}>NÚMERO ODT (OPCIONAL)</label>
-                            <input className="prompt-inp odt" placeholder="EJ: ODT-2025-001"
-                                value={localOdt} onChange={e=>setLocalOdt(e.target.value)}
-                                onKeyDown={e=>e.key==='Enter'&&onStart(sch.id,'submit',{techs:localTechs,odt:localOdt})} />
+                        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                            <div className="form-group">
+                                <label className="form-lbl" style={{color:'#7c3aed'}}>Nº ODT (OPCIONAL)</label>
+                                <input className="prompt-inp odt" placeholder="ODT-2025-001"
+                                    value={localOdt} onChange={e=>setLocalOdt(e.target.value)} />
+                            </div>
+                            <div className="form-group">
+                                <label className="form-lbl" style={{color:'#7c3aed'}}>LINK ODT (OPCIONAL)</label>
+                                <input className="prompt-inp odt" placeholder="https://..."
+                                    style={{textTransform:'none'}}
+                                    value={localOdtLink} onChange={e=>setLocalOdtLink(e.target.value)}
+                                    onKeyDown={e=>e.key==='Enter'&&onStart(sch.id,'submit',{techs:localTechs,odt:localOdt,odtLink:localOdtLink})} />
+                            </div>
                         </div>
                         <div style={{display:'flex',gap:6}}>
                             <button onClick={onCancelAction} className="btn btn-reopen">CANCELAR</button>
-                            <button onClick={()=>onStart(sch.id,'submit',{techs:localTechs,odt:localOdt})} className="btn btn-start">GUARDAR E INICIAR</button>
+                            <button onClick={()=>onStart(sch.id,'submit',{techs:localTechs,odt:localOdt,odtLink:localOdtLink})} className="btn btn-start">GUARDAR E INICIAR</button>
                         </div>
                     </div>
                 </div>
@@ -542,15 +566,23 @@ const SchCard = ({ sch, helpers }) => {
                             <input className="prompt-inp" placeholder="EJ: L. RAMOS, D. CHACÍN"
                                 value={localTechs} onChange={e=>setLocalTechs(e.target.value)} />
                         </div>
-                        <div className="form-group">
-                            <label className="form-lbl" style={{color:'#7c3aed'}}>NÚMERO ODT</label>
-                            <input className="prompt-inp odt" placeholder="EJ: ODT-2025-001"
-                                value={localOdt} onChange={e=>setLocalOdt(e.target.value)}
-                                onKeyDown={e=>e.key==='Enter'&&onEdit(sch.id,'submit',{techs:localTechs,odt:localOdt})} />
+                        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                            <div className="form-group">
+                                <label className="form-lbl" style={{color:'#7c3aed'}}>Nº ODT</label>
+                                <input className="prompt-inp odt" placeholder="ODT-2025-001"
+                                    value={localOdt} onChange={e=>setLocalOdt(e.target.value)} />
+                            </div>
+                            <div className="form-group">
+                                <label className="form-lbl" style={{color:'#7c3aed'}}>LINK ODT</label>
+                                <input className="prompt-inp odt" placeholder="https://..."
+                                    style={{textTransform:'none'}}
+                                    value={localOdtLink} onChange={e=>setLocalOdtLink(e.target.value)}
+                                    onKeyDown={e=>e.key==='Enter'&&onEdit(sch.id,'submit',{techs:localTechs,odt:localOdt,odtLink:localOdtLink})} />
+                            </div>
                         </div>
                         <div style={{display:'flex',gap:6}}>
                             <button onClick={onCancelEdit} className="btn btn-reopen">CANCELAR</button>
-                            <button onClick={()=>onEdit(sch.id,'submit',{techs:localTechs,odt:localOdt})} className="btn btn-edit"><EditIco /> GUARDAR CAMBIOS</button>
+                            <button onClick={()=>onEdit(sch.id,'submit',{techs:localTechs,odt:localOdt,odtLink:localOdtLink})} className="btn btn-edit"><EditIco /> GUARDAR CAMBIOS</button>
                         </div>
                     </div>
                 </div>
@@ -574,7 +606,7 @@ const App = () => {
 
     const [newZone,setNewZone]     = useState({ name:'', color:ZONE_COLORS[0] });
     const [newNode,setNewNode]     = useState({ name:'', zoneId:'' });
-    const [newSch,setNewSch]       = useState({ date:'', zoneId:'', selectedNodes:[], recurring:false, repeatDays:30 });
+    const [newSch,setNewSch]       = useState({ date:'', zoneId:'', selectedNodes:[], recurring:false, repeatDays:30, scheduleMode:'node' });
 
     // Reschedule modal
     const [reschedule, setReschedule] = useState({ open:false, sch:null, newDate:'' });
@@ -594,9 +626,7 @@ const App = () => {
     const [curMonth,setCurMonth]   = useState(new Date());
     const [selDate,setSelDate]     = useState(TODAY_STR);
 
-    // Hover tooltip
-    const [tooltip,setTooltip]     = useState({ visible:false, x:0, y:0, date:'' });
-    const tooltipTimer             = useRef(null);
+    // Hover tooltip (DOM-driven via tooltipRef — no React state needed)
 
     // Filters - calendar
     const [filterZone,setFilterZone]     = useState('');
@@ -707,23 +737,83 @@ const App = () => {
     const nextMonth = () => setCurMonth(new Date(curMonth.getFullYear(), curMonth.getMonth()+1, 1));
     const goToday   = () => { setCurMonth(new Date()); setSelDate(TODAY_STR); };
 
-    // ── Tooltip ──
+    // ── Tooltip via DOM ref (no React state = no re-renders = tooltip stays visible) ──
+    const tooltipRef    = useRef(null);
+    const tooltipTimer  = useRef(null);
+    // Keep fresh data accessible in tooltip callbacks without stale closures
+    const tooltipData   = useRef(null);
+    tooltipData.current = { byDate, getNodeName, getZoneName, getZoneHex };
+
     const showTooltip = (e, dateStr) => {
         clearTimeout(tooltipTimer.current);
+        const el = tooltipRef.current;
+        if(!el) return;
         tooltipTimer.current = setTimeout(() => {
+            const { byDate: bd, getNodeName: gNN, getZoneName: gZN, getZoneHex: gZH } = tooltipData.current;
+            const inspections = bd[dateStr] || [];
+            if(!inspections.length){ el.style.display='none'; return; }
+
+            // Build inner HTML
+            const dateLabel = new Date(dateStr+'T00:00:00Z')
+                .toLocaleDateString('es-VE',{weekday:'long',year:'numeric',month:'short',day:'numeric',timeZone:'UTC'})
+                .toUpperCase();
+
+            const stCfg = s => {
+                const isPast = s.date < TODAY_STR && s.status==='PENDIENTE';
+                if(s.status==='COMPLETADO')   return {label:'✓ COMPLETADO',   color:'#6ee7b7',bg:'rgba(110,231,183,.18)'};
+                if(s.status==='EN EJECUCION') return {label:'● EN EJECUCIÓN', color:'#93c5fd',bg:'rgba(147,197,253,.18)'};
+                if(s.status==='EN PAUSA')     return {label:'⏸ EN PAUSA',     color:'#fcd34d',bg:'rgba(252,211,77,.18)'};
+                if(s.status==='ANULADA')      return {label:'✕ ANULADA',      color:'#fca5a5',bg:'rgba(252,165,165,.18)'};
+                if(isPast)                    return {label:'⚠ VENCIDA',       color:'#f87171',bg:'rgba(239,68,68,.2)'};
+                return                               {label:'○ PENDIENTE',    color:'#fdba74',bg:'rgba(253,186,116,.15)'};
+            };
+
+            const rows = inspections.map((s,idx) => {
+                const nid   = s.nodeId||(s.nodes&&s.nodes[0]);
+                const hex   = gZH(s.zoneId);
+                const delay = calcDelay(s.date, s.status);
+                const cfg   = stCfg(s);
+                const name  = s.scope==='zone' ? `ZONA: ${gZN(s.zoneId)}` : gNN(nid);
+                return `<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-top:1px solid rgba(255,255,255,.07)">
+                    <div style="width:20px;height:20px;border-radius:50%;background:${hex};flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:.55rem;font-weight:900;color:#fff;box-shadow:0 0 0 2px ${hex}40">${idx+1}</div>
+                    <div style="flex:1;min-width:0">
+                        <div style="font-family:'JetBrains Mono',monospace;font-size:.7rem;font-weight:700;color:#f1f5f9;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${name}</div>
+                        <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center">
+                            <span style="font-size:.56rem;font-weight:800;padding:2px 8px;border-radius:999px;background:${cfg.bg};color:${cfg.color};border:1px solid ${cfg.color}40">${cfg.label}</span>
+                            ${delay>0?`<span style="font-size:.54rem;font-weight:800;color:#fca5a5;background:rgba(239,68,68,.18);padding:2px 6px;border-radius:999px">${delay}D RETRASO</span>`:''}
+                            ${s.odt?`<span style="font-size:.53rem;font-weight:800;color:#c4b5fd;background:rgba(168,85,247,.15);padding:1px 6px;border-radius:4px">ODT:${s.odt}</span>`:''}
+                        </div>
+                        ${s.techs?`<div style="margin-top:3px;font-size:.53rem;color:rgba(255,255,255,.3);font-weight:600">${s.techs}</div>`:''}
+                    </div>
+                </div>`;
+            }).join('');
+
+            el.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                    <div style="font-size:.58rem;font-weight:800;letter-spacing:.1em;color:rgba(255,255,255,.4)">${dateLabel}</div>
+                    <div style="font-size:.58rem;font-weight:800;color:rgba(255,255,255,.3)">${inspections.length} INSP.</div>
+                </div>
+                ${rows}
+            `;
+
+            // Position
             const rect = e.currentTarget.getBoundingClientRect();
-            const tooltipW = 270;
-            let x = rect.left + rect.width / 2;
+            const TW = 276;
+            let x = rect.left + rect.width/2 - TW/2;
             let y = rect.bottom + 10;
-            // Clamp horizontal
-            if (x + tooltipW / 2 > window.innerWidth - 8) x = window.innerWidth - tooltipW / 2 - 8;
-            if (x - tooltipW / 2 < 8) x = tooltipW / 2 + 8;
-            // Flip above cell if not enough space below
-            if (y + 280 > window.innerHeight) y = rect.top - 10;
-            setTooltip({ visible: true, x, y, date: dateStr, above: y < rect.top });
-        }, 120);
+            if(x + TW > window.innerWidth - 8) x = window.innerWidth - TW - 8;
+            if(x < 8) x = 8;
+            const estH = 80 + inspections.length * 72;
+            if(y + estH > window.innerHeight - 8) y = rect.top - estH - 10;
+            el.style.left  = x + 'px';
+            el.style.top   = y + 'px';
+            el.style.display = 'block';
+        }, 110);
     };
-    const hideTooltip = () => { clearTimeout(tooltipTimer.current); setTooltip(t => ({ ...t, visible: false })); };
+    const hideTooltip = () => {
+        clearTimeout(tooltipTimer.current);
+        if(tooltipRef.current) tooltipRef.current.style.display = 'none';
+    };
 
     // ── CRUD ──
     const db = (col) => {
@@ -753,73 +843,58 @@ const App = () => {
     };
     const toggleNode = id => {
         const cur = newSch.selectedNodes;
-        if(cur.includes(id)) { setNewSch({...newSch, selectedNodes:cur.filter(x=>x!==id)}); }
-        else { if(cur.length>=5){ alert("MÁXIMO 5 NODOS/DÍA."); return; } setNewSch({...newSch, selectedNodes:[...cur,id]}); }
+        if(cur.includes(id)) setNewSch({...newSch, selectedNodes:cur.filter(x=>x!==id)});
+        else setNewSch({...newSch, selectedNodes:[...cur,id]});
     };
 
     const handleSaveSchedule = async e => {
         e.preventDefault();
-        if(!newSch.date||!newSch.zoneId||newSch.selectedNodes.length===0){ alert("SELECCIONE FECHA, ZONA Y AL MENOS UN NODO."); return; }
-        if(newSch.recurring&&newSch.repeatDays<=0){ alert("INTERVALO DEBE SER > 0."); return; }
+        const isByZone = newSch.scheduleMode === 'zone';
+        if(!newSch.date || !newSch.zoneId){ alert("SELECCIONE FECHA Y ZONA."); return; }
+        if(!isByZone && newSch.selectedNodes.length===0){ alert("SELECCIONE AL MENOS UN NODO."); return; }
+        if(newSch.recurring && newSch.repeatDays<=0){ alert("INTERVALO DEBE SER > 0."); return; }
         const { serverTimestamp:sTs, writeBatch:wb } = window.FirebaseSDK;
         const batch = wb(dbRef.current);
         const schCol = db('pm_schedules');
-        // groupId links ALL nodes of this scheduling session across all dates
         const groupId = newSch.recurring ? Date.now().toString() : null;
 
         let nd = new Date(newSch.date+'T00:00:00Z');
         const ed = new Date(nd);
         if(newSch.recurring) ed.setFullYear(ed.getFullYear()+1);
-
-        // Track (date → slotsUsed) within this batch to check capacity
-        const batchSlots = {};
         const saved = [];
 
         while(nd<=ed){
             // Skip weekends
             let dow = nd.getUTCDay();
             if(dow===6) nd.setUTCDate(nd.getUTCDate()+2);
-            if(dow===0) nd.setUTCDate(nd.getUTCDate()+1);
+            else if(dow===0) nd.setUTCDate(nd.getUTCDate()+1);
 
-            // Find a date with enough slots for ALL selected nodes (1 slot each)
-            let found=false, cd=new Date(nd);
-            for(let i=0;i<30;i++){
-                let cdd=cd.getUTCDay();
-                if(cdd!==6&&cdd!==0){
-                    let ds=cd.toISOString().split('T')[0];
-                    // Existing inspections in DB for this date
-                    let existingCount = schedules.filter(s=>s.date===ds).length;
-                    // Slots already queued in this batch
-                    let batchCount = batchSlots[ds] || 0;
-                    if(existingCount + batchCount + newSch.selectedNodes.length <= 5){
-                        found=true; nd=new Date(cd); break;
-                    }
-                }
-                cd.setUTCDate(cd.getUTCDate()+1);
-            }
-            if(!found){alert("SIN ESPACIO (MÁX 5 INSPECC./DÍA) EN FECHAS CERCANAS.");break;}
-
-            const ds=nd.toISOString().split('T')[0];
+            const ds = nd.toISOString().split('T')[0];
             saved.push(ds);
-            batchSlots[ds] = (batchSlots[ds]||0) + newSch.selectedNodes.length;
 
-            // One document per node
-            newSch.selectedNodes.forEach(nodeId => {
+            if(isByZone){
+                // One document for the whole zone
                 const { doc:fd } = window.FirebaseSDK;
-                const ref = fd(schCol);
-                batch.set(ref, {
-                    date: ds,
-                    zoneId: newSch.zoneId,
-                    nodeId,                      // single node per inspection
-                    nodes: [nodeId],             // kept for backward compat display
-                    techs: '', odt: '', reason: '',
-                    status: 'PENDIENTE',
-                    createdAt: sTs(),
-                    isRecurring: newSch.recurring,
-                    groupId,
-                    repeatDays: newSch.recurring ? Number(newSch.repeatDays) : null
+                batch.set(fd(schCol), {
+                    date:ds, zoneId:newSch.zoneId, scope:'zone',
+                    nodeId:null, nodes:[],
+                    techs:'', odt:'', odtLink:'', reason:'',
+                    status:'PENDIENTE', createdAt:sTs(),
+                    isRecurring:newSch.recurring, groupId, repeatDays:newSch.recurring?Number(newSch.repeatDays):null
                 });
-            });
+            } else {
+                // One document per selected node
+                newSch.selectedNodes.forEach(nodeId => {
+                    const { doc:fd } = window.FirebaseSDK;
+                    batch.set(fd(schCol), {
+                        date:ds, zoneId:newSch.zoneId, scope:'node',
+                        nodeId, nodes:[nodeId],
+                        techs:'', odt:'', odtLink:'', reason:'',
+                        status:'PENDIENTE', createdAt:sTs(),
+                        isRecurring:newSch.recurring, groupId, repeatDays:newSch.recurring?Number(newSch.repeatDays):null
+                    });
+                });
+            }
 
             if(!newSch.recurring) break;
             nd.setUTCDate(nd.getUTCDate()+Number(newSch.repeatDays));
@@ -827,12 +902,12 @@ const App = () => {
         try {
             await batch.commit();
             setSelDate(saved[0]);
-            setNewSch({date:'',zoneId:'',selectedNodes:[],recurring:false,repeatDays:30});
+            setNewSch({date:'',zoneId:'',selectedNodes:[],recurring:false,repeatDays:30,scheduleMode:'node'});
             const fd0=new Date(saved[0]+'T00:00:00Z');
             setCurMonth(new Date(fd0.getFullYear(),fd0.getMonth(),1));
             setActiveTab('cronograma');
-            const totalDocs = saved.length * newSch.selectedNodes.length;
-            alert(`GUARDADO · ${saved.length} FECHA(S) · ${totalDocs} INSPECCIÓN(ES) CREADAS`);
+            const total = isByZone ? saved.length : saved.length * newSch.selectedNodes.length;
+            alert(`GUARDADO · ${saved.length} FECHA(S) · ${total} EVENTO(S) CREADO(S)`);
         } catch(e){console.error(e);alert("ERROR: "+e.message);}
     };
 
@@ -840,14 +915,14 @@ const App = () => {
     const [activeAction, setActiveAction] = useState(null); // e.g. "abc123:START"
     const [activeEdit,   setActiveEdit]   = useState(null); // schedule id
 
-    // Called by SchCard with (id, 'submit', {techs, odt}) or just (id) to open
+    // Called by SchCard with (id, 'submit', {techs, odt, odtLink}) or just (id) to open
     const handleCardStart = async (id, mode, data) => {
         if(mode !== 'submit'){ setActiveAction(id+':START'); setActiveEdit(null); return; }
-        const { techs='', odt='' } = data;
+        const { techs='', odt='', odtLink='' } = data;
         if(!techs.trim()){ alert("INGRESE LOS TÉCNICOS."); return; }
         const { updateDoc } = window.FirebaseSDK;
         try {
-            await updateDoc(docRef('pm_schedules', id), { status:'EN EJECUCION', techs:techs.toUpperCase(), odt:odt.toUpperCase(), reason:'' });
+            await updateDoc(docRef('pm_schedules', id), { status:'EN EJECUCION', techs:techs.toUpperCase(), odt:odt.toUpperCase(), odtLink:odtLink.trim(), reason:'' });
             setActiveAction(null);
         } catch(e){ console.error(e); }
     };
@@ -865,14 +940,14 @@ const App = () => {
         } catch(e){ console.error(e); }
     };
 
-    // Called by SchCard with (id) to open, or (id, 'submit', {techs, odt}) to save
+    // Called by SchCard with (id) to open, or (id, 'submit', {techs, odt, odtLink}) to save
     const handleCardEdit = async (id, mode, data) => {
         if(mode !== 'submit'){ setActiveEdit(id); setActiveAction(null); return; }
-        const { techs='', odt='' } = data;
+        const { techs='', odt='', odtLink='' } = data;
         if(!techs.trim()){ alert("INGRESE LOS TÉCNICOS."); return; }
         const { updateDoc } = window.FirebaseSDK;
         try {
-            await updateDoc(docRef('pm_schedules', id), { techs:techs.toUpperCase(), odt:odt.toUpperCase() });
+            await updateDoc(docRef('pm_schedules', id), { techs:techs.toUpperCase(), odt:odt.toUpperCase(), odtLink:odtLink.trim() });
             setActiveEdit(null);
         } catch(e){ console.error(e); }
     };
@@ -948,20 +1023,37 @@ const App = () => {
         window.XLSX.writeFile(wb, 'Historial_Airtek.xlsx');
     };
 
-    // Reschedule overdue inspection to a new date
+    // Reschedule an inspection (any pending/paused) to a new date
+    // For recurring: recalculate ALL future occurrences from new anchor
     const handleReschedule = async () => {
         const { sch, newDate } = reschedule;
         if(!newDate){ alert("SELECCIONE UNA NUEVA FECHA."); return; }
-        if(newDate <= TODAY_STR){ alert("LA FECHA DEBE SER FUTURA."); return; }
-        // Check capacity on target date
-        const existing = schedules.filter(s=>s.date===newDate).length;
-        if(existing >= 5){ alert("ESE DÍA YA TIENE 5 INSPECCIONES. ELIJA OTRO."); return; }
-        const { updateDoc } = window.FirebaseSDK;
+        const { updateDoc, writeBatch:wb } = window.FirebaseSDK;
         try {
-            const upd = { date: newDate, status: 'PENDIENTE', reason: '' };
-            // If recurring, reset the series anchor so intervals count from new date
-            if(sch.isRecurring) upd.groupId = null; // detach from old series
-            await updateDoc(docRef('pm_schedules', sch.id), upd);
+            if(sch.isRecurring && sch.groupId){
+                // Recalculate the whole future series from the new anchor date
+                const futureSeries = schedules
+                    .filter(s => s.groupId===sch.groupId && s.date >= sch.date)
+                    .sort((a,b)=>new Date(a.date)-new Date(b.date));
+                const interval = sch.repeatDays || 30;
+                const batch = wb(dbRef.current);
+                let anchor = new Date(newDate+'T00:00:00Z');
+                futureSeries.forEach(s => {
+                    // Skip weekends
+                    let d = new Date(anchor);
+                    if(d.getUTCDay()===6) d.setUTCDate(d.getUTCDate()+2);
+                    if(d.getUTCDay()===0) d.setUTCDate(d.getUTCDate()+1);
+                    const ds = d.toISOString().split('T')[0];
+                    batch.update(docRef('pm_schedules', s.id), { date:ds, status:'PENDIENTE', reason:'' });
+                    anchor = new Date(d);
+                    anchor.setUTCDate(anchor.getUTCDate()+interval);
+                });
+                await batch.commit();
+                const n = futureSeries.length;
+                alert(`${n} INSPECCIÓN${n!==1?'ES':''} DE LA SERIE REPROGRAMADA${n!==1?'S':''} DESDE ${newDate}.`);
+            } else {
+                await updateDoc(docRef('pm_schedules', sch.id), { date:newDate, status:'PENDIENTE', reason:'' });
+            }
             setReschedule({ open:false, sch:null, newDate:'' });
         } catch(e){ console.error(e); alert("ERROR: "+e.message); }
     };
@@ -1080,138 +1172,6 @@ const App = () => {
     };
 
     // ════════════════════════════════════════════
-    // HOVER TOOLTIP COMPONENT
-    // ════════════════════════════════════════════
-    const DayTooltip = () => {
-        if (!tooltip.visible) return null;
-        const inspections = byDate[tooltip.date] || [];
-        if (!inspections.length) return null;
-        const free = 5 - inspections.length;
-
-        // Status config
-        const stCfg = s => {
-            const isPast = s.date < TODAY_STR && s.status === 'PENDIENTE';
-            if (s.status === 'COMPLETADO')   return { label: '✓ COMPLETADO',   bg: 'rgba(110,231,183,.18)', color: '#6ee7b7' };
-            if (s.status === 'EN EJECUCION') return { label: '● EN EJECUCIÓN', bg: 'rgba(147,197,253,.18)', color: '#93c5fd' };
-            if (s.status === 'EN PAUSA')     return { label: '⏸ EN PAUSA',     bg: 'rgba(252,211,77,.18)',  color: '#fcd34d' };
-            if (s.status === 'ANULADA')      return { label: '✕ ANULADA',      bg: 'rgba(252,165,165,.18)', color: '#fca5a5' };
-            if (isPast)                      return { label: '⚠ VENCIDA',       bg: 'rgba(239,68,68,.2)',   color: '#f87171' };
-            return                                  { label: '○ PENDIENTE',     bg: 'rgba(253,186,116,.15)', color: '#fdba74' };
-        };
-
-        return (
-            <div
-                className="day-tooltip"
-                style={{
-                    left: tooltip.x,
-                    top: tooltip.above ? 'auto' : tooltip.y,
-                    bottom: tooltip.above ? (window.innerHeight - tooltip.y) + 'px' : 'auto',
-                    transform: 'translateX(-50%)',
-                    width: 270,
-                    minWidth: 'unset',
-                    maxWidth: 'unset',
-                }}
-            >
-                {/* Header */}
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
-                    <div style={{ fontSize:'.58rem', fontWeight:800, letterSpacing:'.12em', color:'rgba(255,255,255,.4)' }}>
-                        {formatDate(tooltip.date)}
-                    </div>
-                    <div style={{ fontSize:'.58rem', fontWeight:800, color: free===0?'#f87171':'rgba(255,255,255,.3)', letterSpacing:'.08em' }}>
-                        {inspections.length}/5
-                    </div>
-                </div>
-
-                {/* One row per inspection */}
-                {inspections.map((s, idx) => {
-                    const nodeId = s.nodeId || (s.nodes && s.nodes[0]);
-                    const delay  = calcDelay(s.date, s.status);
-                    const cfg    = stCfg(s);
-                    const hex    = getZoneHex(s.zoneId);
-                    return (
-                        <div
-                            key={s.id}
-                            style={{
-                                display: 'flex', alignItems: 'flex-start', gap: 10,
-                                padding: '8px 0',
-                                borderTop: idx === 0 ? '1px solid rgba(255,255,255,.08)' : '1px solid rgba(255,255,255,.06)',
-                            }}
-                        >
-                            {/* Number + zone dot */}
-                            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4, flexShrink:0 }}>
-                                <div style={{
-                                    width: 20, height: 20, borderRadius: '50%',
-                                    background: hex, opacity: .9,
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    fontSize: '.55rem', fontWeight: 900, color: '#fff', flexShrink: 0,
-                                    boxShadow: `0 0 0 2px ${hex}40`
-                                }}>
-                                    {idx + 1}
-                                </div>
-                            </div>
-
-                            {/* Content */}
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                                {/* Node name */}
-                                <div style={{
-                                    fontFamily: "'JetBrains Mono', monospace",
-                                    fontSize: '.7rem', fontWeight: 700,
-                                    color: '#f1f5f9', marginBottom: 4,
-                                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                                }}>
-                                    {getNodeName(nodeId)}
-                                </div>
-
-                                {/* Status pill */}
-                                <div style={{ display:'flex', flexWrap:'wrap', gap:4, alignItems:'center' }}>
-                                    <span style={{
-                                        fontSize: '.56rem', fontWeight: 800, letterSpacing: '.07em',
-                                        padding: '2px 8px', borderRadius: 999,
-                                        background: cfg.bg, color: cfg.color,
-                                        border: `1px solid ${cfg.color}40`,
-                                    }}>
-                                        {cfg.label}
-                                    </span>
-                                    {delay > 0 && (
-                                        <span style={{
-                                            fontSize: '.54rem', fontWeight: 800, color: '#fca5a5',
-                                            background: 'rgba(239,68,68,.18)', padding: '2px 6px',
-                                            borderRadius: 999, border: '1px solid rgba(239,68,68,.3)',
-                                        }}>
-                                            {delay}D RETRASO
-                                        </span>
-                                    )}
-                                </div>
-
-                                {/* Techs / ODT if set */}
-                                {(s.techs || s.odt) && (
-                                    <div style={{ marginTop: 4, display:'flex', gap:5, flexWrap:'wrap' }}>
-                                        {s.odt   && <span style={{ fontSize:'.53rem', fontWeight:800, color:'#c4b5fd', background:'rgba(168,85,247,.15)', padding:'1px 6px', borderRadius:4 }}>ODT:{s.odt}</span>}
-                                        {s.techs && <span style={{ fontSize:'.53rem', fontWeight:600, color:'rgba(255,255,255,.3)' }}>{s.techs}</span>}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    );
-                })}
-
-                {/* Footer */}
-                <div style={{
-                    marginTop: 8, paddingTop: 8,
-                    borderTop: '1px solid rgba(255,255,255,.08)',
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                }}>
-                    <span style={{ fontSize:'.56rem', fontWeight:700, color:'rgba(255,255,255,.3)', letterSpacing:'.08em' }}>
-                        {free > 0 ? `${free} SLOT${free!==1?'S':''} DISPONIBLE${free!==1?'S':''}` : 'DÍA COMPLETO'}
-                    </span>
-                    {free === 0 && (
-                        <span style={{ fontSize:'.54rem', fontWeight:800, color:'#f87171', background:'rgba(239,68,68,.15)', padding:'2px 7px', borderRadius:999 }}>LLENO</span>
-                    )}
-                </div>
-            </div>
-        );
-    };
-
     // ════════════════════════════════════════════
     // LOADING
     // ════════════════════════════════════════════
@@ -1233,7 +1193,8 @@ const App = () => {
     // ════════════════════════════════════════════
     return (
         <div style={{minHeight:'100vh',paddingBottom:96}}>
-            <DayTooltip />
+            {/* Tooltip DOM node — populated directly by showTooltip() without React state */}
+            <div ref={tooltipRef} className="day-tooltip" style={{display:'none',width:276,position:'fixed',zIndex:9999,pointerEvents:'none'}} />
 
             {/* ── RESCHEDULE MODAL ── */}
             {reschedule.open && (
@@ -1248,13 +1209,12 @@ const App = () => {
                             type="date"
                             className="prompt-inp"
                             style={{width:'100%',marginBottom:16}}
-                            min={TODAY_STR}
                             value={reschedule.newDate}
                             onChange={e=>setReschedule(r=>({...r,newDate:e.target.value}))}
                         />
-                        {reschedule.sch?.isRecurring && (
-                            <div style={{fontSize:'.57rem',fontWeight:700,color:'#f59e0b',background:'rgba(245,158,11,.1)',border:'1px solid rgba(245,158,11,.3)',borderRadius:8,padding:'8px 12px',marginBottom:16,letterSpacing:'.06em'}}>
-                                ⚠ ESTA INSPECCIÓN ES RECURRENTE. AL REPROGRAMAR SE DESVINCULARÁ DE LA SERIE Y LOS INTERVALOS SE CONTARÁN DESDE LA NUEVA FECHA.
+                        {reschedule.sch?.isRecurring && reschedule.sch?.groupId && (
+                            <div style={{fontSize:'.57rem',fontWeight:700,color:'#0e7490',background:'rgba(6,182,212,.1)',border:'1px solid rgba(6,182,212,.3)',borderRadius:8,padding:'8px 12px',marginBottom:16,letterSpacing:'.06em'}}>
+                                ℹ️ ESTA INSPECCIÓN ES RECURRENTE. AL REPROGRAMAR SE ACTUALIZARÁN TODAS LAS FECHAS FUTURAS DE LA SERIE, CONTANDO LOS INTERVALOS DESDE LA NUEVA FECHA.
                             </div>
                         )}
                         <div style={{display:'flex',gap:8}}>
@@ -1438,8 +1398,24 @@ const App = () => {
                     {activeTab==='programar' && (
                         <form onSubmit={handleSaveSchedule} className="card card-xl" style={{padding:'26px',display:'flex',flexDirection:'column',gap:16}}>
                             <div style={{textAlign:'center',paddingBottom:14,borderBottom:'1px solid var(--border)'}}>
-                                <div style={{fontSize:'.75rem',fontWeight:900,color:'var(--primary)',letterSpacing:'.08em',marginBottom:4}}>PROGRAMAR MANTENIMIENTO</div>
-                                <div style={{fontSize:'.58rem',fontWeight:700,color:'var(--muted)',letterSpacing:'.12em'}}>MÁX 5 NODOS / DÍA · FIN DE SEMANA → LUNES</div>
+                                <div style={{fontSize:'.75rem',fontWeight:900,color:'var(--primary)',letterSpacing:'.08em',marginBottom:12}}>PROGRAMAR MANTENIMIENTO</div>
+                                {/* Mode toggle */}
+                                <div style={{display:'flex',background:'#f1f5f9',borderRadius:12,padding:4,gap:4}}>
+                                    {[{id:'node',label:'📍 POR NODO'},{id:'zone',label:'🗂 POR ZONA COMPLETA'}].map(m=>(
+                                        <button key={m.id} type="button"
+                                            onClick={()=>setNewSch({...newSch,scheduleMode:m.id,selectedNodes:[]})}
+                                            style={{flex:1,padding:'9px 6px',borderRadius:9,border:'none',cursor:'pointer',fontFamily:"'Exo 2',sans-serif",fontSize:'.6rem',fontWeight:900,letterSpacing:'.08em',textTransform:'uppercase',transition:'all .2s',
+                                                background:newSch.scheduleMode===m.id?'#fff':'transparent',
+                                                color:newSch.scheduleMode===m.id?'var(--primary)':'var(--muted)',
+                                                boxShadow:newSch.scheduleMode===m.id?'0 1px 6px rgba(13,26,42,.1)':'none'
+                                            }}>
+                                            {m.label}
+                                        </button>
+                                    ))}
+                                </div>
+                                <div style={{fontSize:'.56rem',fontWeight:700,color:'var(--muted)',marginTop:8,letterSpacing:'.08em'}}>
+                                    {newSch.scheduleMode==='zone' ? 'CREA UN EVENTO ÚNICO PARA TODA LA ZONA · FIN DE SEMANA → LUNES' : 'CREA UN EVENTO POR CADA NODO SELECCIONADO · FIN DE SEMANA → LUNES'}
+                                </div>
                             </div>
 
                             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
@@ -1456,25 +1432,35 @@ const App = () => {
                                 </div>
                             </div>
 
-                            {newSch.zoneId && (
+                            {newSch.zoneId && newSch.scheduleMode === 'node' && (
                                 <div className="node-sel-box">
                                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
                                         <label style={{fontSize:'.6rem',fontWeight:900,letterSpacing:'.12em',color:'var(--primary)'}}>NODOS A INTERVENIR</label>
-                                        <span style={{fontSize:'.6rem',fontWeight:800,padding:'3px 10px',borderRadius:999,background:newSch.selectedNodes.length>=5?'#fff7ed':'#f1f5f9',color:newSch.selectedNodes.length>=5?'#c2410c':'#475569',border:`1px solid ${newSch.selectedNodes.length>=5?'#fed7aa':'#e2e8f0'}`}}>
-                                            {newSch.selectedNodes.length}/5
+                                        <span style={{fontSize:'.6rem',fontWeight:800,padding:'3px 10px',borderRadius:999,background:'#f1f5f9',color:'#475569',border:'1px solid #e2e8f0'}}>
+                                            {newSch.selectedNodes.length} SELECCIONADO{newSch.selectedNodes.length!==1?'S':''}
                                         </span>
                                     </div>
                                     <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:7}}>
                                         {nodesInZone.map(n=>{
                                             const isSel = newSch.selectedNodes.includes(n.id);
-                                            const isMax = newSch.selectedNodes.length>=5 && !isSel;
                                             return (
-                                                <label key={n.id} className={`node-sel-lbl ${isSel?'nsl-sel':''} ${isMax?'nsl-dis':''}`}>
-                                                    <input type="checkbox" className="chk" disabled={isMax} checked={isSel} onChange={()=>toggleNode(n.id)} />
+                                                <label key={n.id} className={`node-sel-lbl ${isSel?'nsl-sel':''}`}>
+                                                    <input type="checkbox" className="chk" checked={isSel} onChange={()=>toggleNode(n.id)} />
                                                     <span style={{fontSize:'.68rem',fontWeight:800,color:isSel?'var(--primary-d)':'#334155'}}>{n.name}</span>
                                                 </label>
                                             );
                                         })}
+                                    </div>
+                                </div>
+                            )}
+                            {newSch.zoneId && newSch.scheduleMode === 'zone' && (
+                                <div style={{background:'rgba(13,148,136,.07)',border:'1px solid rgba(13,148,136,.2)',borderRadius:16,padding:'14px 16px',display:'flex',alignItems:'center',gap:12}}>
+                                    <span style={{fontSize:'1.4rem'}}>🗂</span>
+                                    <div>
+                                        <div style={{fontSize:'.65rem',fontWeight:900,color:'var(--primary)',letterSpacing:'.08em'}}>SE CREARÁ UN EVENTO DE ZONA</div>
+                                        <div style={{fontSize:'.58rem',fontWeight:700,color:'var(--muted)',marginTop:2}}>
+                                            ZONA: {zones.find(z=>z.id===newSch.zoneId)?.name} · {nodesInZone.length} NODO{nodesInZone.length!==1?'S':''} INCLUIDO{nodesInZone.length!==1?'S':''}
+                                        </div>
                                     </div>
                                 </div>
                             )}
@@ -1728,5 +1714,4 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 </script>
 </body>
 </html>
-
 
