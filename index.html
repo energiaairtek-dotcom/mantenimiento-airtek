@@ -910,61 +910,44 @@ const App = () => {
         const { serverTimestamp:sTs, writeBatch:wb } = window.FirebaseSDK;
         const batch = wb(dbRef.current);
         const schCol = db('pm_schedules');
+        // Recurring: ONE occurrence only — next is auto-created on completion
         const groupId = newSch.recurring ? Date.now().toString() : null;
         const actName = newSch.activityName.trim().toUpperCase();
 
+        // Skip weekends on base date
         let nd = new Date(newSch.date+'T00:00:00Z');
-        const ed = new Date(nd);
-        if(newSch.recurring) ed.setFullYear(ed.getFullYear()+1);
-        const saved = [];
+        let dow = nd.getUTCDay();
+        if(dow===6) nd.setUTCDate(nd.getUTCDate()+2);
+        else if(dow===0) nd.setUTCDate(nd.getUTCDate()+1);
+        const ds = nd.toISOString().split('T')[0];
 
-        while(nd<=ed){
-            // Skip weekends
-            let dow = nd.getUTCDay();
-            if(dow===6) nd.setUTCDate(nd.getUTCDate()+2);
-            else if(dow===0) nd.setUTCDate(nd.getUTCDate()+1);
+        const baseDoc = {
+            activityName:actName, activityType:newSch.activityType, coordinacion:newSch.coordinacion,
+            date:ds, zoneId:newSch.zoneId,
+            techs:'', odt:'', odtLink:'', reason:'',
+            status:'PENDIENTE', createdAt:sTs(),
+            isRecurring:newSch.recurring, groupId, repeatDays:newSch.recurring?Number(newSch.repeatDays):null
+        };
 
-            const ds = nd.toISOString().split('T')[0];
-            saved.push(ds);
-
-            if(isByZone){
-                // One document for the whole zone
+        if(isByZone){
+            const { doc:fd } = window.FirebaseSDK;
+            batch.set(fd(schCol), { ...baseDoc, scope:'zone', nodeId:null, nodes:[] });
+        } else {
+            newSch.selectedNodes.forEach(nodeId => {
                 const { doc:fd } = window.FirebaseSDK;
-                batch.set(fd(schCol), {
-                    date:ds, zoneId:newSch.zoneId, scope:'zone',
-                    nodeId:null, nodes:[],
-                    activityName:actName, activityType:newSch.activityType, coordinacion:newSch.coordinacion,
-                    techs:'', odt:'', odtLink:'', reason:'',
-                    status:'PENDIENTE', createdAt:sTs(),
-                    isRecurring:newSch.recurring, groupId, repeatDays:newSch.recurring?Number(newSch.repeatDays):null
-                });
-            } else {
-                // One document per selected node
-                newSch.selectedNodes.forEach(nodeId => {
-                    const { doc:fd } = window.FirebaseSDK;
-                    batch.set(fd(schCol), {
-                        date:ds, zoneId:newSch.zoneId, scope:'node',
-                        nodeId, nodes:[nodeId],
-                        activityName:actName, activityType:newSch.activityType, coordinacion:newSch.coordinacion,
-                        techs:'', odt:'', odtLink:'', reason:'',
-                        status:'PENDIENTE', createdAt:sTs(),
-                        isRecurring:newSch.recurring, groupId, repeatDays:newSch.recurring?Number(newSch.repeatDays):null
-                    });
-                });
-            }
-
-            if(!newSch.recurring) break;
-            nd.setUTCDate(nd.getUTCDate()+Number(newSch.repeatDays));
+                batch.set(fd(schCol), { ...baseDoc, scope:'node', nodeId, nodes:[nodeId] });
+            });
         }
+
         try {
             await batch.commit();
-            setSelDate(saved[0]);
+            setSelDate(ds);
             setNewSch({date:'',zoneId:'',selectedNodes:[],recurring:false,repeatDays:30,scheduleMode:'node',activityName:'',activityType:'planificada',coordinacion:'OPERACIONES'});
-            const fd0=new Date(saved[0]+'T00:00:00Z');
+            const fd0=new Date(ds+'T00:00:00Z');
             setCurMonth(new Date(fd0.getFullYear(),fd0.getMonth(),1));
             setActiveTab('cronograma');
-            const total = isByZone ? saved.length : saved.length * newSch.selectedNodes.length;
-            alert(`GUARDADO · ${saved.length} FECHA(S) · ${total} EVENTO(S) CREADO(S)`);
+            const total = isByZone ? 1 : newSch.selectedNodes.length;
+            alert(`GUARDADO · ${total} ACTIVIDAD${total!==1?'ES':''} AGENDADA${total!==1?'S':''}`);
         } catch(e){console.error(e);alert("ERROR: "+e.message);}
     };
 
@@ -1009,12 +992,43 @@ const App = () => {
         } catch(e){ console.error(e); }
     };
 
+    // Helper: next weekday date string from a base date + N days
+    const nextWeekday = (baseDateStr, addDays) => {
+        let d = new Date(baseDateStr+'T00:00:00Z');
+        d.setUTCDate(d.getUTCDate() + addDays);
+        if(d.getUTCDay()===6) d.setUTCDate(d.getUTCDate()+2);
+        else if(d.getUTCDay()===0) d.setUTCDate(d.getUTCDate()+1);
+        return d.toISOString().split('T')[0];
+    };
+
     const handleStatusChange = async (sch, status) => {
-        const { updateDoc } = window.FirebaseSDK;
+        const { updateDoc, addDoc, serverTimestamp:sTs } = window.FirebaseSDK;
         try {
             let upd = {status};
             if(status==='PENDIENTE') upd.reason='';
             await updateDoc(docRef('pm_schedules', sch.id), upd);
+
+            // Auto-create next occurrence when completing a recurring activity
+            if(status==='COMPLETADO' && sch.isRecurring && sch.repeatDays) {
+                const nextDate = nextWeekday(sch.date, Number(sch.repeatDays));
+                const nextDoc = {
+                    activityName: sch.activityName||'INSPECCIÓN PM',
+                    activityType: sch.activityType||'planificada',
+                    coordinacion: sch.coordinacion||'OPERACIONES',
+                    date: nextDate,
+                    zoneId: sch.zoneId,
+                    scope: sch.scope,
+                    nodeId: sch.nodeId||null,
+                    nodes: sch.nodes||[],
+                    techs:'', odt:'', odtLink:'', reason:'',
+                    status:'PENDIENTE',
+                    isRecurring: true,
+                    groupId: sch.groupId||sch.id,
+                    repeatDays: sch.repeatDays,
+                    createdAt: sTs(),
+                };
+                await addDoc(db('pm_schedules'), nextDoc);
+            }
         } catch(e){console.error(e);}
     };
 
@@ -1101,37 +1115,18 @@ const App = () => {
         window.XLSX.writeFile(wb, 'Historial_Airtek.xlsx');
     };
 
-    // Reschedule an inspection (any pending/paused) to a new date
-    // For recurring: recalculate ALL future occurrences from new anchor
+    // Reschedule: simply update date. Next occurrence will count from new date on completion.
     const handleReschedule = async () => {
         const { sch, newDate } = reschedule;
         if(!newDate){ alert("SELECCIONE UNA NUEVA FECHA."); return; }
-        const { updateDoc, writeBatch:wb } = window.FirebaseSDK;
+        // Skip weekends on chosen date
+        let d = new Date(newDate+'T00:00:00Z');
+        if(d.getUTCDay()===6) d.setUTCDate(d.getUTCDate()+2);
+        else if(d.getUTCDay()===0) d.setUTCDate(d.getUTCDate()+1);
+        const finalDate = d.toISOString().split('T')[0];
+        const { updateDoc } = window.FirebaseSDK;
         try {
-            if(sch.isRecurring && sch.groupId){
-                // Recalculate the whole future series from the new anchor date
-                const futureSeries = schedules
-                    .filter(s => s.groupId===sch.groupId && s.date >= sch.date)
-                    .sort((a,b)=>new Date(a.date)-new Date(b.date));
-                const interval = sch.repeatDays || 30;
-                const batch = wb(dbRef.current);
-                let anchor = new Date(newDate+'T00:00:00Z');
-                futureSeries.forEach(s => {
-                    // Skip weekends
-                    let d = new Date(anchor);
-                    if(d.getUTCDay()===6) d.setUTCDate(d.getUTCDate()+2);
-                    if(d.getUTCDay()===0) d.setUTCDate(d.getUTCDate()+1);
-                    const ds = d.toISOString().split('T')[0];
-                    batch.update(docRef('pm_schedules', s.id), { date:ds, status:'PENDIENTE', reason:'' });
-                    anchor = new Date(d);
-                    anchor.setUTCDate(anchor.getUTCDate()+interval);
-                });
-                await batch.commit();
-                const n = futureSeries.length;
-                alert(`${n} INSPECCIÓN${n!==1?'ES':''} DE LA SERIE REPROGRAMADA${n!==1?'S':''} DESDE ${newDate}.`);
-            } else {
-                await updateDoc(docRef('pm_schedules', sch.id), { date:newDate, status:'PENDIENTE', reason:'' });
-            }
+            await updateDoc(docRef('pm_schedules', sch.id), { date:finalDate, status:'PENDIENTE', reason:'' });
             setReschedule({ open:false, sch:null, newDate:'' });
         } catch(e){ console.error(e); alert("ERROR: "+e.message); }
     };
@@ -1162,7 +1157,7 @@ const App = () => {
                         <div className="del-modal">
                             <div style={{width:48,height:48,background:'#fef2f2',color:'#ef4444',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 14px'}}><TrashIco /></div>
                             <div style={{fontSize:'.68rem',fontWeight:900,marginBottom:6}}>TAREA RECURRENTE</div>
-                            <div style={{fontSize:'.6rem',color:'var(--muted)',lineHeight:1.5,marginBottom:18}}>Esta inspección pertenece a una serie programada.</div>
+                            <div style={{fontSize:'.6rem',color:'var(--muted)',lineHeight:1.5,marginBottom:18}}>Esta actividad es recurrente. ¿Qué deseas eliminar?</div>
                             <div style={{display:'flex',flexDirection:'column',gap:6}}>
                                 <button onClick={()=>confirmDel('SERIES')} className="btn" style={{background:'#ef4444',color:'#fff',width:'100%',padding:'12px',boxShadow:'0 3px 12px rgba(239,68,68,.3)'}}>ELIMINAR TODA LA SERIE</button>
                                 <button onClick={()=>confirmDel('SINGLE')} className="btn btn-pause" style={{width:'100%',padding:'12px'}}>SOLO ESTA FECHA</button>
@@ -1289,7 +1284,7 @@ const App = () => {
                         />
                         {reschedule.sch?.isRecurring && reschedule.sch?.groupId && (
                             <div style={{fontSize:'.57rem',fontWeight:700,color:'#0e7490',background:'rgba(6,182,212,.1)',border:'1px solid rgba(6,182,212,.3)',borderRadius:8,padding:'8px 12px',marginBottom:16,letterSpacing:'.06em'}}>
-                                ℹ️ ESTA INSPECCIÓN ES RECURRENTE. AL REPROGRAMAR SE ACTUALIZARÁN TODAS LAS FECHAS FUTURAS DE LA SERIE, CONTANDO LOS INTERVALOS DESDE LA NUEVA FECHA.
+                                ℹ️ ACTIVIDAD RECURRENTE · LA PRÓXIMA OCURRENCIA SE CALCULARÁ DESDE LA NUEVA FECHA AL COMPLETARLA.
                             </div>
                         )}
                         <div style={{display:'flex',gap:8}}>
@@ -1601,13 +1596,13 @@ const App = () => {
                             <div className="recur-box">
                                 <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer'}}>
                                     <input type="checkbox" className="chk" checked={newSch.recurring} onChange={e=>setNewSch({...newSch,recurring:e.target.checked})} />
-                                    <span style={{fontSize:'.68rem',fontWeight:800,color:'#0f766e',letterSpacing:'.08em'}}>PROGRAMAR RECURRENTE (1 AÑO)</span>
+                                    <span style={{fontSize:'.68rem',fontWeight:800,color:'#0f766e',letterSpacing:'.08em'}}>ACTIVIDAD RECURRENTE</span>
                                 </label>
                                 {newSch.recurring && (
                                     <div className="form-group" style={{marginTop:12}}>
                                         <label className="form-lbl" style={{color:'#0f766e'}}>REPETIR CADA (DÍAS)</label>
                                         <input type="number" className="form-inp" style={{background:'#fff',borderColor:'#a7f3d0'}} value={newSch.repeatDays} min="1" onChange={e=>setNewSch({...newSch,repeatDays:e.target.value})} />
-                                        <span style={{fontSize:'.58rem',fontWeight:700,color:'#0f766e',fontStyle:'italic',marginTop:4}}>GENERARÁ CITAS AUTOMÁTICAMENTE POR 1 AÑO.</span>
+                                        <span style={{fontSize:'.58rem',fontWeight:700,color:'#0f766e',fontStyle:'italic',marginTop:4}}>AL COMPLETAR CADA OCURRENCIA SE GENERA AUTOMÁTICAMENTE LA SIGUIENTE.</span>
                                     </div>
                                 )}
                             </div>
