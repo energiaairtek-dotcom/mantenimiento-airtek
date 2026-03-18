@@ -528,7 +528,7 @@ const SchCard = ({ sch, helpers }) => {
                     {canWrite && canEdit && (
                         <button onClick={handleOpenEdit} className="btn btn-edit"><EditIco /> EDITAR INFO</button>
                     )}
-                    {isAdmin && (
+                    {(isAdmin || canWrite) && (
                         <button onClick={()=>onDelete(sch)} className="btn btn-delete" style={{marginLeft:'auto'}}><TrashIco /></button>
                     )}
                 </div>
@@ -1130,6 +1130,7 @@ const App = () => {
     };
 
     const promptDelete = sch => {
+        if(!canWrite(sch.coordinacion)){ alert("NO TIENE PERMISOS PARA ELIMINAR ESTA ACTIVIDAD."); return; }
         if(sch.groupId) setDelP({isOpen:true,schedule:sch});
         else deleteItem('pm_schedules', sch.id, 'ESTA PROGRAMACIÓN');
     };
