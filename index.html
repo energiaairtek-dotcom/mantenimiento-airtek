@@ -309,8 +309,8 @@
 
 <script type="module">
     import { initializeApp }   from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import { getFirestore, doc, setDoc, updateDoc, deleteDoc, collection, onSnapshot, addDoc, serverTimestamp, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import { getAuth, signInAnonymously, signInWithEmailAndPassword, signOut, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, updateDoc, deleteDoc, collection, onSnapshot, addDoc, serverTimestamp, writeBatch, getDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
     const cfg = {
         apiKey:"AIzaSyDwaK4Z26RfqDwNvwdMqri08oEjwG9qymc",
@@ -321,7 +321,7 @@
         appId:"1:934058211778:web:6cc9d820c41fa90aa5fe5b"
     };
     window.__firebase_config_manual = JSON.stringify(cfg);
-    window.FirebaseSDK = { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, getFirestore, doc, setDoc, updateDoc, deleteDoc, collection, onSnapshot, addDoc, serverTimestamp, writeBatch };
+    window.FirebaseSDK = { initializeApp, getAuth, signInAnonymously, signInWithEmailAndPassword, signOut, onAuthStateChanged, signInWithCustomToken, getFirestore, doc, setDoc, updateDoc, deleteDoc, collection, onSnapshot, addDoc, serverTimestamp, writeBatch, getDoc, getDocs };
     window.dispatchEvent(new Event('firebase-ready'));
 </script>
 
@@ -395,7 +395,7 @@ const SchCard = ({ sch, helpers }) => {
             activeAction, activeEdit,
             onStart, onPauseCancel, onEdit,
             onCancelAction, onCancelEdit,
-            onStatusChange, onDelete, onReschedule, isAdmin } = helpers;
+            onStatusChange, onDelete, onReschedule, isAdmin, canWrite = false } = helpers;
 
     // Local form state — completely isolated from App
     const [localTechs,   setLocalTechs]   = React.useState('');
@@ -502,7 +502,7 @@ const SchCard = ({ sch, helpers }) => {
             {/* Action buttons */}
             {showBtns && (
                 <div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:4}}>
-                    {isPending && <>
+                    {canWrite && isPending && <>
                         <button onClick={handleOpenStart}  className="btn btn-start"><PlayIco /> INICIAR</button>
                         <button onClick={handleOpenPause}  className="btn btn-pause"><PauseIco /> PAUSAR</button>
                         <button onClick={handleOpenCancel} className="btn btn-cancel"><BanIco /> ANULAR</button>
@@ -510,22 +510,22 @@ const SchCard = ({ sch, helpers }) => {
                             📅 REPROGRAMAR
                         </button>
                     </>}
-                    {isExecuting && <>
+                    {canWrite && isExecuting && <>
                         <button onClick={()=>onStatusChange(sch,'COMPLETADO')} className="btn btn-complete"><CheckIco /> COMPLETAR</button>
                         <button onClick={handleOpenPause}  className="btn btn-pause"><PauseIco /> PAUSAR</button>
                         <button onClick={handleOpenCancel} className="btn btn-cancel"><BanIco /> ANULAR</button>
                     </>}
-                    {isPaused && <>
+                    {canWrite && isPaused && <>
                         <button onClick={()=>onStatusChange(sch,'EN EJECUCION')} className="btn btn-resume"><PlayIco /> REANUDAR</button>
                         <button onClick={handleOpenCancel} className="btn btn-cancel"><BanIco /> ANULAR</button>
                         <button onClick={()=>onReschedule(sch)} className="btn btn-reopen" style={{background:'rgba(245,158,11,.1)',color:'#92400e',borderColor:'rgba(245,158,11,.35)'}}>
                             📅 REPROGRAMAR
                         </button>
                     </>}
-                    {(isCancelled||isCompleted) && (
+                    {canWrite && (isCancelled||isCompleted) && (
                         <button onClick={()=>onStatusChange(sch,'PENDIENTE')} className="btn btn-reopen">↺ REABRIR</button>
                     )}
-                    {canEdit && (
+                    {canWrite && canEdit && (
                         <button onClick={handleOpenEdit} className="btn btn-edit"><EditIco /> EDITAR INFO</button>
                     )}
                     {isAdmin && (
@@ -627,7 +627,13 @@ const App = () => {
     const [isCloud,setIsCloud]     = useState(false);
     const [activeTab,setActiveTab] = useState('cronograma');
     const [adminSec,setAdminSec]   = useState('zona');
-    const [isAdmin,setIsAdmin]     = useState(false);
+    const [isAdmin,setIsAdmin]     = useState(false); // legacy — kept for compatibility
+    const [currentUser,setCurrentUser] = useState(null); // {email, rol, coordinacion}
+    const [loginModal,setLoginModal]   = useState(false);
+    const [loginForm,setLoginForm]     = useState({email:'',password:''});
+    const [loginError,setLoginError]   = useState('');
+    const [loginLoading,setLoginLoading] = useState(false);
+    const authRef = useRef(null);
 
     const [zones,setZones]         = useState([]);
     const [nodes,setNodes]         = useState([]);
@@ -680,6 +686,8 @@ const App = () => {
                 const app = initializeApp(JSON.parse(configStr));
                 dbRef.current = getFirestore(app);
                 const auth = getAuth(app);
+                authRef.current = auth;
+                // Sign in anonymously for data read access
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token);
                 else await signInAnonymously(auth);
                 const unsub = onAuthStateChanged(auth, u => { if(u){setUser(u);setIsCloud(true);} setLoading(false); });
@@ -705,6 +713,84 @@ const App = () => {
         }, e=>console.error(e));
         return () => { unZ(); unN(); unS(); };
     }, [user, appId]);
+
+    // ── Login / Logout ──
+    const handleLogin = async (e) => {
+        e.preventDefault();
+        setLoginError('');
+        setLoginLoading(true);
+        const { signInWithEmailAndPassword, signInAnonymously } = window.FirebaseSDK;
+        try {
+            // Sign in with email/password
+            const cred = await signInWithEmailAndPassword(authRef.current, loginForm.email.trim(), loginForm.password);
+            // Load user profile from pm_users
+            const { collection: col, onSnapshot: onSnap, getDocs, query, where } = window.FirebaseSDK;
+            const { getDocs: gd, query: q, where: w } = window.FirebaseSDK;
+            // Read user profile document (email as doc id)
+            const profileRef = docRef('pm_users', cred.user.uid);
+            const { getDoc } = window.FirebaseSDK;
+            let profile = null;
+            try {
+                const snap = await getDoc(profileRef);
+                if (snap.exists()) profile = snap.data();
+            } catch(err) { console.warn('Profile not found by uid, trying email lookup'); }
+
+            if (!profile) {
+                // Fallback: search by email field
+                const profilesSnap = await window.FirebaseSDK.getDocs(
+                    window.FirebaseSDK.collection(dbRef.current, 'artifacts', appId, 'public', 'data', 'pm_users')
+                );
+                profilesSnap.forEach(d => {
+                    if (d.data().email?.toLowerCase() === loginForm.email.trim().toLowerCase()) {
+                        profile = { ...d.data(), id: d.id };
+                    }
+                });
+            }
+
+            if (!profile) {
+                await window.FirebaseSDK.signOut(authRef.current);
+                await signInAnonymously(authRef.current);
+                setLoginError('Usuario no encontrado en el sistema. Contacte al administrador.');
+                setLoginLoading(false);
+                return;
+            }
+            setCurrentUser({ email: cred.user.email, rol: profile.rol || 'lector', coordinacion: profile.coordinacion || null, nombre: profile.nombre || cred.user.email });
+            setIsAdmin(profile.rol === 'admin');
+            setLoginModal(false);
+            setLoginForm({email:'',password:''});
+        } catch(err) {
+            const msg = err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found'
+                ? 'Correo o contraseña incorrectos.'
+                : err.code === 'auth/too-many-requests'
+                ? 'Demasiados intentos. Intente más tarde.'
+                : 'Error al iniciar sesión.';
+            setLoginError(msg);
+        }
+        setLoginLoading(false);
+    };
+
+    const handleLogout = async () => {
+        const { signOut: so, signInAnonymously } = window.FirebaseSDK;
+        try {
+            await so(authRef.current);
+            await signInAnonymously(authRef.current);
+        } catch(e) { console.error(e); }
+        setCurrentUser(null);
+        setIsAdmin(false);
+    };
+
+    // ── Permission helpers ──
+    // Can schedule/edit activities for a given coordinacion
+    const canWrite = (coordinacion) => {
+        if (!currentUser) return false;
+        if (currentUser.rol === 'admin') return true;
+        if (currentUser.rol === 'editor') return !coordinacion || currentUser.coordinacion === coordinacion;
+        return false;
+    };
+    // Can manage zones and nodes (admin only)
+    const canAdmin = currentUser?.rol === 'admin';
+    // Can access programar tab
+    const canSchedule = currentUser?.rol === 'admin' || currentUser?.rol === 'editor';
 
     // ── Derived data ──
     const getZoneName  = useCallback(id => zones.find(z=>z.id===id)?.name || 'DESCONOCIDA', [zones]);
@@ -1295,6 +1381,48 @@ const App = () => {
                 </div>
             )}
 
+            {/* ── LOGIN MODAL ── */}
+            {loginModal && (
+                <div style={{position:'fixed',inset:0,background:'rgba(13,26,42,.7)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
+                    <div style={{background:'var(--surface)',borderRadius:20,padding:32,width:'100%',maxWidth:380,boxShadow:'0 20px 60px rgba(13,26,42,.4)',position:'relative'}}>
+                        <div style={{textAlign:'center',marginBottom:24}}>
+                            <div style={{width:48,height:48,background:'linear-gradient(135deg,var(--primary),var(--accent))',borderRadius:14,margin:'0 auto 14px',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                                <svg width="22" height="22" fill="none" stroke="#fff" strokeWidth="2.5" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                            </div>
+                            <div style={{fontSize:'.8rem',fontWeight:900,letterSpacing:'.06em'}}>ACCESO AL SISTEMA</div>
+                            <div style={{fontSize:'.62rem',color:'var(--muted)',marginTop:4,letterSpacing:'.08em'}}>INGRESE SUS CREDENCIALES</div>
+                        </div>
+                        <form onSubmit={handleLogin} style={{display:'flex',flexDirection:'column',gap:12}}>
+                            <div className="form-group">
+                                <label className="form-lbl">CORREO ELECTRÓNICO</label>
+                                <input autoFocus type="email" className="form-inp" style={{textTransform:'none'}}
+                                    placeholder="usuario@airtek.com.ve"
+                                    value={loginForm.email}
+                                    onChange={e=>setLoginForm(f=>({...f,email:e.target.value}))} />
+                            </div>
+                            <div className="form-group">
+                                <label className="form-lbl">CONTRASEÑA</label>
+                                <input type="password" className="form-inp" style={{textTransform:'none'}}
+                                    placeholder="••••••••"
+                                    value={loginForm.password}
+                                    onChange={e=>setLoginForm(f=>({...f,password:e.target.value}))} />
+                            </div>
+                            {loginError && (
+                                <div style={{fontSize:'.62rem',fontWeight:700,color:'#dc2626',background:'#fef2f2',border:'1px solid #fecaca',borderRadius:8,padding:'8px 12px',letterSpacing:'.06em'}}>
+                                    {loginError}
+                                </div>
+                            )}
+                            <button type="submit" disabled={loginLoading} className="btn btn-full" style={{marginTop:4,opacity:loginLoading?.6:1}}>
+                                {loginLoading ? 'VERIFICANDO...' : 'INGRESAR'}
+                            </button>
+                            <button type="button" onClick={()=>{setLoginModal(false);setLoginError('');setLoginForm({email:'',password:''}); }} className="btn btn-reopen" style={{width:'100%'}}>
+                                CANCELAR
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            )}
+
             {/* ── HEADER ── */}
             <header className="app-header" style={{padding:'14px 20px'}}>
                 <div style={{maxWidth:740,margin:'0 auto',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
@@ -1311,9 +1439,25 @@ const App = () => {
                             </div>
                         </div>
                     </div>
-                    <button onClick={()=>setIsAdmin(!isAdmin)} className={`mode-btn ${isAdmin?'mode-active':'mode-inactive'}`}>
-                        {isAdmin ? '✎ EDITOR' : '◉ LECTURA'}
-                    </button>
+                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                        {currentUser ? (
+                            <>
+                                <div style={{textAlign:'right'}}>
+                                    <div style={{fontSize:'.6rem',fontWeight:800,color:'#5eead4',letterSpacing:'.1em'}}>{currentUser.nombre || currentUser.email}</div>
+                                    <div style={{fontSize:'.55rem',fontWeight:700,color:'rgba(255,255,255,.4)',letterSpacing:'.1em',marginTop:1}}>
+                                        {currentUser.rol==='admin'?'ADMINISTRADOR':currentUser.rol==='editor'?`EDITOR · ${currentUser.coordinacion||''}` : 'LECTURA'}
+                                    </div>
+                                </div>
+                                <button onClick={handleLogout} className="mode-btn mode-inactive" style={{fontSize:'.58rem'}}>
+                                    ⏻ SALIR
+                                </button>
+                            </>
+                        ) : (
+                            <button onClick={()=>setLoginModal(true)} className="mode-btn mode-inactive">
+                                ◉ LECTURA
+                            </button>
+                        )}
+                    </div>
                 </div>
             </header>
 
@@ -1337,11 +1481,11 @@ const App = () => {
                 {/* ── TABS ── */}
                 <nav className="tab-nav no-scroll">
                     {[
-                        {id:'cronograma',label:'CALENDARIO'},
-                        {id:'programar', label:'PROGRAMAR'},
-                        {id:'historial', label:'HISTORIAL'},
-                        {id:'maestro',   label:'ZONAS / NODOS'}
-                    ].map(t=>(
+                        {id:'cronograma',label:'CALENDARIO', show:true},
+                        {id:'programar', label:'PROGRAMAR',  show:canSchedule},
+                        {id:'historial', label:'HISTORIAL',  show:true},
+                        {id:'maestro',   label:'ZONAS / NODOS', show:canAdmin}
+                    ].filter(t=>t.show).map(t=>(
                         <button key={t.id} onClick={()=>setActiveTab(t.id)} className={`tab-btn ${activeTab===t.id?'tab-active':'tab-inactive'}`}>{t.label}</button>
                     ))}
                 </nav>
@@ -1473,7 +1617,8 @@ const App = () => {
                                                 onStatusChange: handleStatusChange,
                                                 onDelete: promptDelete,
                                                 onReschedule: (s)=>setReschedule({open:true,sch:s,newDate:''}),
-                                                isAdmin,
+                                                isAdmin: canAdmin,
+                                                canWrite: canWrite(sch.coordinacion),
                                             }} />
                                         ))}
                                     </div>
