@@ -993,6 +993,10 @@ const App = () => {
         if(!isByZone && newSch.selectedNodes.length===0){ alert("SELECCIONE AL MENOS UN NODO."); return; }
         if(!newSch.activityName.trim()){ alert("INGRESE EL NOMBRE DE LA ACTIVIDAD."); return; }
         if(newSch.recurring && newSch.repeatDays<=0){ alert("INTERVALO DEBE SER > 0."); return; }
+
+        // Editor can only schedule for their own coordinacion
+        const finalCoord = canAdmin ? newSch.coordinacion : (currentUser?.coordinacion || 'OPERACIONES');
+        if (!canAdmin && !canWrite(finalCoord)) { alert("NO TIENE PERMISOS PARA PROGRAMAR EN ESTA COORDINACIÓN."); return; }
         const { serverTimestamp:sTs, writeBatch:wb } = window.FirebaseSDK;
         const batch = wb(dbRef.current);
         const schCol = db('pm_schedules');
@@ -1008,7 +1012,7 @@ const App = () => {
         const ds = nd.toISOString().split('T')[0];
 
         const baseDoc = {
-            activityName:actName, activityType:newSch.activityType, coordinacion:newSch.coordinacion,
+            activityName:actName, activityType:newSch.activityType, coordinacion:finalCoord,
             date:ds, zoneId:newSch.zoneId,
             techs:'', odt:'', odtLink:'', reason:'',
             status:'PENDIENTE', createdAt:sTs(),
@@ -1028,7 +1032,8 @@ const App = () => {
         try {
             await batch.commit();
             setSelDate(ds);
-            setNewSch({date:'',zoneId:'',selectedNodes:[],recurring:false,repeatDays:30,scheduleMode:'node',activityName:'',activityType:'planificada',coordinacion:'OPERACIONES'});
+            const defaultCoord = canAdmin ? 'OPERACIONES' : (currentUser?.coordinacion || 'OPERACIONES');
+            setNewSch({date:'',zoneId:'',selectedNodes:[],recurring:false,repeatDays:30,scheduleMode:'node',activityName:'',activityType:'planificada',coordinacion:defaultCoord});
             const fd0=new Date(ds+'T00:00:00Z');
             setCurMonth(new Date(fd0.getFullYear(),fd0.getMonth(),1));
             setActiveTab('cronograma');
@@ -1044,6 +1049,8 @@ const App = () => {
     // Called by SchCard with (id, 'submit', {techs, odt, odtLink}) or just (id) to open
     const handleCardStart = async (id, mode, data) => {
         if(mode !== 'submit'){ setActiveAction(id+':START'); setActiveEdit(null); return; }
+        const sch = schedules.find(s=>s.id===id);
+        if(!canWrite(sch?.coordinacion)){ alert("SIN PERMISOS."); return; }
         const { techs='', odt='', odtLink='' } = data;
         if(!techs.trim()){ alert("INGRESE LOS TÉCNICOS."); return; }
         const { updateDoc } = window.FirebaseSDK;
@@ -1056,6 +1063,8 @@ const App = () => {
     // Called by SchCard with (id, type) to open, or (id, type, 'submit', {reason}) to save
     const handleCardPauseCancel = async (id, type, mode, data) => {
         if(mode !== 'submit'){ setActiveAction(id+':'+type); setActiveEdit(null); return; }
+        const sch = schedules.find(s=>s.id===id);
+        if(!canWrite(sch?.coordinacion)){ alert("SIN PERMISOS."); return; }
         const { reason='' } = data;
         if(!reason.trim()){ alert("INGRESE EL MOTIVO."); return; }
         const { updateDoc } = window.FirebaseSDK;
@@ -1069,6 +1078,8 @@ const App = () => {
     // Called by SchCard with (id) to open, or (id, 'submit', {techs, odt, odtLink}) to save
     const handleCardEdit = async (id, mode, data) => {
         if(mode !== 'submit'){ setActiveEdit(id); setActiveAction(null); return; }
+        const sch = schedules.find(s=>s.id===id);
+        if(!canWrite(sch?.coordinacion)){ alert("SIN PERMISOS."); return; }
         const { techs='', odt='', odtLink='' } = data;
         if(!techs.trim()){ alert("INGRESE LOS TÉCNICOS."); return; }
         const { updateDoc } = window.FirebaseSDK;
@@ -1205,6 +1216,8 @@ const App = () => {
     const handleReschedule = async () => {
         const { sch, newDate } = reschedule;
         if(!newDate){ alert("SELECCIONE UNA NUEVA FECHA."); return; }
+        // Permission check
+        if(!canWrite(sch.coordinacion)){ alert("NO TIENE PERMISOS PARA REPROGRAMAR ESTA ACTIVIDAD."); return; }
         // Skip weekends on chosen date
         let d = new Date(newDate+'T00:00:00Z');
         if(d.getUTCDay()===6) d.setUTCDate(d.getUTCDate()+2);
@@ -1628,7 +1641,7 @@ const App = () => {
                     )}
 
                     {/* ────── PROGRAMAR ────── */}
-                    {activeTab==='programar' && (
+                    {activeTab==='programar' && canSchedule && (
                         <form onSubmit={handleSaveSchedule} className="card card-xl" style={{padding:'26px',display:'flex',flexDirection:'column',gap:16}}>
                             <div style={{textAlign:'center',paddingBottom:14,borderBottom:'1px solid var(--border)'}}>
                                 <div style={{fontSize:'.75rem',fontWeight:900,color:'var(--primary)',letterSpacing:'.08em',marginBottom:12}}>PROGRAMAR ACTIVIDAD</div>
@@ -1677,18 +1690,24 @@ const App = () => {
                             {/* Coordinación */}
                             <div className="form-group">
                                 <label className="form-lbl">COORDINACIÓN</label>
-                                <div style={{display:'flex',flexWrap:'wrap',gap:7}}>
-                                    {COORDINACIONES.map(c=>(
-                                        <button key={c} type="button"
-                                            onClick={()=>setNewSch({...newSch,coordinacion:c})}
-                                            style={{padding:'8px 14px',borderRadius:999,border:`1.5px solid ${newSch.coordinacion===c?'var(--primary)':'var(--border)'}`,cursor:'pointer',fontFamily:"'Exo 2',sans-serif",fontSize:'.6rem',fontWeight:800,letterSpacing:'.08em',textTransform:'uppercase',transition:'all .2s',
-                                                background:newSch.coordinacion===c?'var(--primary-l)':'transparent',
-                                                color:newSch.coordinacion===c?'var(--primary-d)':'var(--muted)'
-                                            }}>
-                                            {c}
-                                        </button>
-                                    ))}
-                                </div>
+                                {canAdmin ? (
+                                    <div style={{display:'flex',flexWrap:'wrap',gap:7}}>
+                                        {COORDINACIONES.map(c=>(
+                                            <button key={c} type="button"
+                                                onClick={()=>setNewSch({...newSch,coordinacion:c})}
+                                                style={{padding:'8px 14px',borderRadius:999,border:`1.5px solid ${newSch.coordinacion===c?'var(--primary)':'var(--border)'}`,cursor:'pointer',fontFamily:"'Exo 2',sans-serif",fontSize:'.6rem',fontWeight:800,letterSpacing:'.08em',textTransform:'uppercase',transition:'all .2s',
+                                                    background:newSch.coordinacion===c?'var(--primary-l)':'transparent',
+                                                    color:newSch.coordinacion===c?'var(--primary-d)':'var(--muted)'
+                                                }}>
+                                                {c}
+                                            </button>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div style={{display:'inline-flex',alignItems:'center',gap:8,padding:'8px 16px',borderRadius:999,background:'var(--primary-l)',border:'1.5px solid var(--primary)',color:'var(--primary-d)',fontSize:'.6rem',fontWeight:900,letterSpacing:'.1em'}}>
+                                        🔒 {currentUser?.coordinacion || 'OPERACIONES'}
+                                    </div>
+                                )}
                             </div>
 
                             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
@@ -1916,7 +1935,7 @@ const App = () => {
 
 
                     {/* ────── MAESTRO ────── */}
-                    {activeTab==='maestro' && (
+                    {activeTab==='maestro' && canAdmin && (
                         <>
                             <div className="sub-tab">
                                 {['zona','nodo'].map(t=>(
