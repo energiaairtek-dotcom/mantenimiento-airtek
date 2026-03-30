@@ -813,11 +813,18 @@ const App = () => {
     };
 
     // ── Permission helpers ──
+    // Normaliza coordinacion a array (soporta string legacy y array nuevo)
+    const userCoords = () => {
+        if (!currentUser?.coordinacion) return [];
+        return Array.isArray(currentUser.coordinacion)
+            ? currentUser.coordinacion
+            : [currentUser.coordinacion];
+    };
     // Can schedule/edit activities for a given coordinacion
     const canWrite = (coordinacion) => {
         if (!currentUser) return false;
         if (currentUser.rol === 'admin') return true;
-        if (currentUser.rol === 'editor') return !coordinacion || currentUser.coordinacion === coordinacion;
+        if (currentUser.rol === 'editor') return !coordinacion || userCoords().includes(coordinacion);
         return false;
     };
     // Can manage zones and nodes (admin only)
@@ -1027,8 +1034,8 @@ const App = () => {
         if(!newSch.activityName.trim()){ alert("INGRESE EL NOMBRE DE LA ACTIVIDAD."); return; }
         if(newSch.recurring && newSch.repeatDays<=0){ alert("INTERVALO DEBE SER > 0."); return; }
 
-        // Editor can only schedule for their own coordinacion
-        const finalCoord = canAdmin ? newSch.coordinacion : (currentUser?.coordinacion || 'OPERACIONES');
+        // Editor can only schedule for their own coordinacion(es)
+        const finalCoord = canAdmin ? newSch.coordinacion : (newSch.coordinacion && userCoords().includes(newSch.coordinacion) ? newSch.coordinacion : userCoords()[0] || 'OPERACIONES');
         if (!canAdmin && !canWrite(finalCoord)) { alert("NO TIENE PERMISOS PARA PROGRAMAR EN ESTA COORDINACIÓN."); return; }
         const { serverTimestamp:sTs, writeBatch:wb } = window.FirebaseSDK;
         const batch = wb(dbRef.current);
@@ -1065,7 +1072,7 @@ const App = () => {
         try {
             await batch.commit();
             setSelDate(ds);
-            const defaultCoord = canAdmin ? 'OPERACIONES' : (currentUser?.coordinacion || 'OPERACIONES');
+            const defaultCoord = canAdmin ? 'OPERACIONES' : (userCoords()[0] || 'OPERACIONES');
             setNewSch({date:'',zoneId:'',selectedNodes:[],recurring:false,repeatDays:30,scheduleMode:'node',activityName:'',activityType:'planificada',coordinacion:defaultCoord});
             const fd0=new Date(ds+'T00:00:00Z');
             setCurMonth(new Date(fd0.getFullYear(),fd0.getMonth(),1));
@@ -1550,7 +1557,7 @@ const App = () => {
                                 <div style={{textAlign:'right'}}>
                                     <div style={{fontSize:'.6rem',fontWeight:800,color:'#5eead4',letterSpacing:'.1em'}}>{currentUser.nombre || currentUser.email}</div>
                                     <div style={{fontSize:'.55rem',fontWeight:700,color:'rgba(255,255,255,.4)',letterSpacing:'.1em',marginTop:1}}>
-                                        {currentUser.rol==='admin'?'ADMINISTRADOR':currentUser.rol==='editor'?`EDITOR · ${currentUser.coordinacion||''}` : 'LECTURA'}
+                                        {currentUser.rol==='admin'?'ADMINISTRADOR':currentUser.rol==='editor'?`EDITOR · ${userCoords().join(' / ')||''}` : 'LECTURA'}
                                     </div>
                                 </div>
                                 <button onClick={()=>{setPwError('');setPwSuccess('');setPwForm({current:'',newPw:'',confirm:''});setPwModal(true);}}
@@ -1800,9 +1807,24 @@ const App = () => {
                                             </button>
                                         ))}
                                     </div>
+                                ) : userCoords().length > 1 ? (
+                                    // Editor con múltiples coordinaciones — puede elegir entre las suyas
+                                    <div style={{display:'flex',flexWrap:'wrap',gap:7}}>
+                                        {userCoords().map(c=>(
+                                            <button key={c} type="button"
+                                                onClick={()=>setNewSch({...newSch,coordinacion:c})}
+                                                style={{padding:'8px 14px',borderRadius:999,border:`1.5px solid ${newSch.coordinacion===c?'var(--primary)':'var(--border)'}`,cursor:'pointer',fontFamily:"'Exo 2',sans-serif",fontSize:'.6rem',fontWeight:800,letterSpacing:'.08em',textTransform:'uppercase',transition:'all .2s',
+                                                    background:newSch.coordinacion===c?'var(--primary-l)':'transparent',
+                                                    color:newSch.coordinacion===c?'var(--primary-d)':'var(--muted)'
+                                                }}>
+                                                {c}
+                                            </button>
+                                        ))}
+                                    </div>
                                 ) : (
+                                    // Editor con una sola coordinacion — campo fijo
                                     <div style={{display:'inline-flex',alignItems:'center',gap:8,padding:'8px 16px',borderRadius:999,background:'var(--primary-l)',border:'1.5px solid var(--primary)',color:'var(--primary-d)',fontSize:'.6rem',fontWeight:900,letterSpacing:'.1em'}}>
-                                        🔒 {currentUser?.coordinacion || 'OPERACIONES'}
+                                        🔒 {userCoords()[0] || 'OPERACIONES'}
                                     </div>
                                 )}
                             </div>
