@@ -398,9 +398,10 @@ const SchCard = ({ sch, helpers }) => {
             onStatusChange, onDelete, onReschedule, isAdmin, canWrite = false } = helpers;
 
     // Local form state — completely isolated from App
-    const [localTechs,   setLocalTechs]   = React.useState('');
-    const [localOdts,    setLocalOdts]    = React.useState([{odt:'',link:''}]); // array of {odt, link}
-    const [localReason,  setLocalReason]  = React.useState('');
+    const [localTechs,      setLocalTechs]      = React.useState('');
+    const [localOdts,       setLocalOdts]       = React.useState([{odt:'',link:''}]);
+    const [localReason,     setLocalReason]     = React.useState('');
+    const [localRepeatDays, setLocalRepeatDays] = React.useState('');
 
     // helpers for ODT array
     const addOdtRow    = () => setLocalOdts(prev=>[...prev,{odt:'',link:''}]);
@@ -432,7 +433,7 @@ const SchCard = ({ sch, helpers }) => {
     const showCancel = activeAction === sch.id + ':CANCEL';
     const showEdit   = activeEdit   === sch.id;
     const showBtns   = !showStart && !showPause && !showCancel && !showEdit;
-    const canEdit    = isExecuting || isPaused || isCompleted;
+    const canEdit    = isExecuting || isPaused || isCompleted || isPending; // editors can fix interval on pending too
     const isOverdue  = isPast; // alias for clarity
 
     const handleOpenStart  = () => {
@@ -447,6 +448,7 @@ const SchCard = ({ sch, helpers }) => {
         setLocalTechs(sch.techs||'');
         const odts = sch.odts?.length ? sch.odts : [{odt:sch.odt||'',link:sch.odtLink||''}];
         setLocalOdts(odts);
+        setLocalRepeatDays(sch.repeatDays ? String(sch.repeatDays) : '');
         onEdit(sch.id);
     };
 
@@ -625,6 +627,17 @@ const SchCard = ({ sch, helpers }) => {
                             <input className="prompt-inp" placeholder="EJ: L. RAMOS, D. CHACÍN"
                                 value={localTechs} onChange={e=>setLocalTechs(e.target.value)} />
                         </div>
+                        {sch.isRecurring && (
+                            <div className="form-group">
+                                <label className="form-lbl" style={{color:'#0f766e'}}>INTERVALO DE REPETICIÓN (DÍAS)</label>
+                                <input type="number" min="1" className="prompt-inp" style={{background:'#f0fdf9',borderColor:'#a7f3d0'}}
+                                    placeholder="EJ: 30"
+                                    value={localRepeatDays} onChange={e=>setLocalRepeatDays(e.target.value)} />
+                                <div style={{fontSize:'.57rem',color:'#0f766e',fontWeight:700,marginTop:4,letterSpacing:'.06em'}}>
+                                    SOLO AFECTA LA PRÓXIMA OCURRENCIA — NO CAMBIA LAS YA CREADAS.
+                                </div>
+                            </div>
+                        )}
                         <div>
                             <label className="form-lbl" style={{color:'#7c3aed',marginBottom:6,display:'block'}}>ÓRDENES DE TRABAJO</label>
                             {localOdts.map((row,i)=>(
@@ -644,7 +657,7 @@ const SchCard = ({ sch, helpers }) => {
                         </div>
                         <div style={{display:'flex',gap:6}}>
                             <button onClick={onCancelEdit} className="btn btn-reopen">CANCELAR</button>
-                            <button onClick={()=>onEdit(sch.id,'submit',{techs:localTechs,...serializeOdts()})} className="btn btn-edit"><EditIco /> GUARDAR CAMBIOS</button>
+                            <button onClick={()=>onEdit(sch.id,'submit',{techs:localTechs,...serializeOdts(),repeatDays:localRepeatDays?Number(localRepeatDays):sch.repeatDays})} className="btn btn-edit"><EditIco /> GUARDAR CAMBIOS</button>
                         </div>
                     </div>
                 </div>
@@ -714,6 +727,7 @@ const App = () => {
     const [histFilterTech,setHistFilterTech]   = useState('');
     const [histFilterCoord,setHistFilterCoord] = useState('');
     const [histFilterType,setHistFilterType]   = useState('');
+    const [histFilterStatus,setHistFilterStatus] = useState('');
 
     const dbRef = useRef(null);
     const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-pm-app-id';
@@ -1232,11 +1246,13 @@ const App = () => {
         if(mode !== 'submit'){ setActiveEdit(id); setActiveAction(null); return; }
         const sch = schedules.find(s=>s.id===id);
         if(!canWrite(sch?.coordinacion)){ alert("SIN PERMISOS."); return; }
-        const { techs='', odt='', odtLink='', odts=[] } = data;
+        const { techs='', odt='', odtLink='', odts=[], repeatDays } = data;
         if(!techs.trim()){ alert("INGRESE LOS TÉCNICOS."); return; }
         const { updateDoc } = window.FirebaseSDK;
+        const upd = { techs:techs.toUpperCase(), odt, odtLink, odts };
+        if(repeatDays && repeatDays > 0) upd.repeatDays = repeatDays;
         try {
-            await updateDoc(docRef('pm_schedules', id), { techs:techs.toUpperCase(), odt, odtLink, odts });
+            await updateDoc(docRef('pm_schedules', id), upd);
             setActiveEdit(null);
             loadSchedules();
         } catch(e){ console.error(e); }
@@ -2013,7 +2029,7 @@ const App = () => {
 
                     {/* ────── HISTORIAL ────── */}
                     {activeTab==='historial' && (() => {
-                        const completed = schedules.filter(s=>s.status==='COMPLETADO');
+                        const completed = schedules.filter(s=>s.status==='COMPLETADO'||s.status==='ANULADA');
                         const filtered  = completed.filter(s => {
                             const nid = s.nodeId || (s.nodes&&s.nodes[0]);
                             if(histFilterZone && s.zoneId !== histFilterZone) return false;
@@ -2023,11 +2039,12 @@ const App = () => {
                             if(histFilterDateTo   && s.date > histFilterDateTo)   return false;
                             if(histFilterCoord && (s.coordinacion||'OPERACIONES') !== histFilterCoord) return false;
                             if(histFilterType  && (s.activityType||'planificada') !== histFilterType)  return false;
+                            if(histFilterStatus && s.status !== histFilterStatus) return false;
                             return true;
                         }).sort((a,b)=>new Date(b.date)-new Date(a.date));
 
-                        const clearAll = () => { setHistFilterZone(''); setHistFilterNode(''); setHistFilterTech(''); setHistFilterDateFrom(''); setHistFilterDateTo(''); setHistFilterCoord(''); setHistFilterType(''); };
-                        const hasFilter = histFilterZone||histFilterNode||histFilterTech||histFilterDateFrom||histFilterDateTo||histFilterCoord||histFilterType;
+                        const clearAll = () => { setHistFilterZone(''); setHistFilterNode(''); setHistFilterTech(''); setHistFilterDateFrom(''); setHistFilterDateTo(''); setHistFilterCoord(''); setHistFilterType(''); setHistFilterStatus(''); };
+                        const hasFilter = histFilterZone||histFilterNode||histFilterTech||histFilterDateFrom||histFilterDateTo||histFilterCoord||histFilterType||histFilterStatus;
 
                         return (
                         <>
@@ -2064,7 +2081,7 @@ const App = () => {
                                     value={histFilterTech} onChange={e=>setHistFilterTech(e.target.value)} />
                             </div>
 
-                            {/* Filters row 2 — Coordinacion / Type */}
+                            {/* Filters row 2 — Coordinacion / Type / Status */}
                             <div className="filter-bar" style={{flexWrap:'wrap',gap:8}}>
                                 <span className="filter-lbl">TIPO:</span>
                                 <select className="filter-select" value={histFilterCoord} onChange={e=>setHistFilterCoord(e.target.value)}>
@@ -2074,6 +2091,11 @@ const App = () => {
                                 <select className="filter-select" value={histFilterType} onChange={e=>setHistFilterType(e.target.value)}>
                                     <option value="">TODOS LOS TIPOS</option>
                                     {ACTIVITY_TYPES.map(t=><option key={t.id} value={t.id}>{t.label}</option>)}
+                                </select>
+                                <select className="filter-select" value={histFilterStatus} onChange={e=>setHistFilterStatus(e.target.value)}>
+                                    <option value="">COMPLETADAS Y ANULADAS</option>
+                                    <option value="COMPLETADO">SOLO COMPLETADAS</option>
+                                    <option value="ANULADA">SOLO ANULADAS</option>
                                 </select>
                             </div>
 
@@ -2114,6 +2136,7 @@ const App = () => {
                                                 <th>FECHA</th>
                                                 <th>ACTIVIDAD</th>
                                                 <th>TIPO</th>
+                                                <th>ESTADO</th>
                                                 <th>COORDINACIÓN</th>
                                                 <th>ZONA / NODO</th>
                                                 <th>ODT</th>
@@ -2122,8 +2145,8 @@ const App = () => {
                                         </thead>
                                         <tbody>
                                             {filtered.length===0 ? (
-                                                <tr><td colSpan="7" style={{textAlign:'center',padding:40,color:'var(--muted)',fontSize:'.63rem',fontWeight:800,letterSpacing:'.12em'}}>
-                                                    {completed.length===0 ? 'AÚN NO HAY ACTIVIDADES FINALIZADAS' : 'SIN RESULTADOS CON ESTOS FILTROS'}
+                                                <tr><td colSpan="8" style={{textAlign:'center',padding:40,color:'var(--muted)',fontSize:'.63rem',fontWeight:800,letterSpacing:'.12em'}}>
+                                                    {completed.length===0 ? 'AÚN NO HAY ACTIVIDADES COMPLETADAS NI ANULADAS' : 'SIN RESULTADOS CON ESTOS FILTROS'}
                                                 </td></tr>
                                             ) : (
                                                 filtered.map(s => {
@@ -2143,6 +2166,14 @@ const App = () => {
                                                         <td>
                                                             <span style={{display:'inline-flex',alignItems:'center',gap:4,fontSize:'.55rem',fontWeight:800,padding:'2px 7px',borderRadius:999,background:actT.bg,color:actT.color,border:`1px solid ${actT.border}`,whiteSpace:'nowrap'}}>
                                                                 <span style={{width:5,height:5,borderRadius:'50%',background:actT.color,flexShrink:0}} />{actT.label}
+                                                            </span>
+                                                        </td>
+                                                        <td>
+                                                            <span style={{fontSize:'.58rem',fontWeight:800,padding:'2px 8px',borderRadius:999,
+                                                                background:s.status==='COMPLETADO'?'rgba(34,197,94,.1)':'rgba(239,68,68,.1)',
+                                                                color:s.status==='COMPLETADO'?'#15803d':'#dc2626',
+                                                                border:`1px solid ${s.status==='COMPLETADO'?'rgba(34,197,94,.3)':'rgba(239,68,68,.3)'}`}}>
+                                                                {s.status==='COMPLETADO'?'✓ COMPLETADO':'✕ ANULADA'}
                                                             </span>
                                                         </td>
                                                         <td style={{fontSize:'.62rem',fontWeight:700,color:'var(--muted)'}}>{s.coordinacion||'OPERACIONES'}</td>
