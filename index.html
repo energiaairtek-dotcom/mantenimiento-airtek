@@ -408,10 +408,12 @@ const SchCard = ({ sch, helpers }) => {
             onStatusChange, onDelete, onReschedule, isAdmin, canWrite = false } = helpers;
 
     // Local form state — completely isolated from App
-    const [localTechs,      setLocalTechs]      = React.useState('');
-    const [localOdts,       setLocalOdts]       = React.useState([{odt:'',link:''}]);
-    const [localReason,     setLocalReason]     = React.useState('');
-    const [localRepeatDays, setLocalRepeatDays] = React.useState('');
+    const [localTechs,        setLocalTechs]        = React.useState('');
+    const [localOdts,         setLocalOdts]         = React.useState([{odt:'',link:''}]);
+    const [localReason,       setLocalReason]       = React.useState('');
+    const [localRepeatDays,   setLocalRepeatDays]   = React.useState('');
+    const [localActivityName, setLocalActivityName] = React.useState('');
+    const [localIsRecurring,  setLocalIsRecurring]  = React.useState(false);
 
     // helpers for ODT array
     const addOdtRow    = () => setLocalOdts(prev=>[...prev,{odt:'',link:''}]);
@@ -459,6 +461,8 @@ const SchCard = ({ sch, helpers }) => {
         const odts = sch.odts?.length ? sch.odts : [{odt:sch.odt||'',link:sch.odtLink||''}];
         setLocalOdts(odts);
         setLocalRepeatDays(sch.repeatDays ? String(sch.repeatDays) : '');
+        setLocalActivityName(sch.activityName || 'INSPECCIÓN PM');
+        setLocalIsRecurring(!!sch.isRecurring);
         onEdit(sch.id);
     };
 
@@ -633,21 +637,29 @@ const SchCard = ({ sch, helpers }) => {
                     <div className="prompt-lbl" style={{color:'#6b21a8'}}>EDITAR TÉCNICOS Y ODT</div>
                     <div style={{display:'flex',flexDirection:'column',gap:10}}>
                         <div className="form-group">
+                            <label className="form-lbl" style={{color:'#7c3aed'}}>NOMBRE DE LA ACTIVIDAD</label>
+                            <input className="prompt-inp" placeholder="EJ: INSPECCIÓN PM"
+                                value={localActivityName} onChange={e=>setLocalActivityName(e.target.value.toUpperCase())} />
+                        </div>
+                        <div className="form-group" style={{background:'rgba(15,118,110,.05)',padding:'10px',borderRadius:12,border:'1px solid rgba(15,118,110,.1)'}}>
+                            <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer'}}>
+                                <input type="checkbox" className="chk" checked={localIsRecurring} onChange={e=>setLocalIsRecurring(e.target.checked)} />
+                                <span style={{fontSize:'.68rem',fontWeight:800,color:'#0f766e',letterSpacing:'.08em'}}>ACTIVIDAD RECURRENTE</span>
+                            </label>
+                            {localIsRecurring && (
+                                <div style={{marginTop:10}}>
+                                    <label className="form-lbl" style={{color:'#0f766e',fontSize:'.55rem'}}>REPETIR CADA (DÍAS)</label>
+                                    <input type="number" min="1" className="prompt-inp" style={{background:'#fff',borderColor:'#a7f3d0',marginTop:4}}
+                                        placeholder="EJ: 30"
+                                        value={localRepeatDays} onChange={e=>setLocalRepeatDays(e.target.value)} />
+                                </div>
+                            )}
+                        </div>
+                        <div className="form-group">
                             <label className="form-lbl" style={{color:'#7c3aed'}}>TÉCNICOS ASIGNADOS</label>
                             <input className="prompt-inp" placeholder="EJ: L. RAMOS, D. CHACÍN"
                                 value={localTechs} onChange={e=>setLocalTechs(e.target.value)} />
                         </div>
-                        {sch.isRecurring && (
-                            <div className="form-group">
-                                <label className="form-lbl" style={{color:'#0f766e'}}>INTERVALO DE REPETICIÓN (DÍAS)</label>
-                                <input type="number" min="1" className="prompt-inp" style={{background:'#f0fdf9',borderColor:'#a7f3d0'}}
-                                    placeholder="EJ: 30"
-                                    value={localRepeatDays} onChange={e=>setLocalRepeatDays(e.target.value)} />
-                                <div style={{fontSize:'.57rem',color:'#0f766e',fontWeight:700,marginTop:4,letterSpacing:'.06em'}}>
-                                    SOLO AFECTA LA PRÓXIMA OCURRENCIA — NO CAMBIA LAS YA CREADAS.
-                                </div>
-                            </div>
-                        )}
                         <div>
                             <label className="form-lbl" style={{color:'#7c3aed',marginBottom:6,display:'block'}}>ÓRDENES DE TRABAJO</label>
                             {localOdts.map((row,i)=>(
@@ -667,7 +679,7 @@ const SchCard = ({ sch, helpers }) => {
                         </div>
                         <div style={{display:'flex',gap:6}}>
                             <button onClick={onCancelEdit} className="btn btn-reopen">CANCELAR</button>
-                            <button onClick={()=>onEdit(sch.id,'submit',{techs:localTechs,...serializeOdts(),repeatDays:localRepeatDays?Number(localRepeatDays):sch.repeatDays})} className="btn btn-edit"><EditIco /> GUARDAR CAMBIOS</button>
+                            <button onClick={()=>onEdit(sch.id,'submit',{techs:localTechs,...serializeOdts(),repeatDays:localRepeatDays?Number(localRepeatDays):sch.repeatDays,activityName:localActivityName,isRecurring:localIsRecurring})} className="btn btn-edit"><EditIco /> GUARDAR CAMBIOS</button>
                         </div>
                     </div>
                 </div>
@@ -1298,11 +1310,13 @@ const App = () => {
         if(mode !== 'submit'){ setActiveEdit(id); setActiveAction(null); return; }
         const sch = schedules.find(s=>s.id===id);
         if(!canWrite(sch?.coordinacion)){ alert("SIN PERMISOS."); return; }
-        const { techs='', odt='', odtLink='', odts=[], repeatDays } = data;
+        const { techs='', odt='', odtLink='', odts=[], repeatDays, activityName, isRecurring } = data;
         if(!techs.trim()){ alert("INGRESE LOS TÉCNICOS."); return; }
         const { updateDoc } = window.FirebaseSDK;
         const upd = { techs:techs.toUpperCase(), odt, odtLink, odts };
         if(repeatDays && repeatDays > 0) upd.repeatDays = repeatDays;
+        if(activityName) upd.activityName = activityName.trim().toUpperCase();
+        if(typeof isRecurring === 'boolean') upd.isRecurring = isRecurring;
         try {
             await updateDoc(docRef('pm_schedules', id), upd);
             setActiveEdit(null);
