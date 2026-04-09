@@ -1001,7 +1001,7 @@ const App = () => {
     // Can schedule/edit activities for a given coordinacion
     const canWrite = (coordinacion) => {
         if (!currentUser) return false;
-        if (currentUser.rol === 'admin') return true;
+        if (currentUser.rol === 'admin' || isAdmin) return true;
         if (currentUser.rol === 'editor') return !coordinacion || userCoords().includes(coordinacion);
         return false;
     };
@@ -1369,10 +1369,20 @@ const App = () => {
         }
     };
 
-    const promptDelete = sch => {
-        if(!canWrite(sch.coordinacion)){ alert("NO TIENE PERMISOS PARA ELIMINAR ESTA ACTIVIDAD."); return; }
-        if(sch.groupId) setDelP({isOpen:true,schedule:sch});
-        else deleteItem('pm_schedules', sch.id, 'ESTA PROGRAMACIÓN');
+    const promptDelete = async sch => {
+        if(!isAdmin && !canWrite(sch.coordinacion)){ alert("NO TIENE PERMISOS PARA ELIMINAR ESTA ACTIVIDAD."); return; }
+        if(sch.groupId){ setDelP({isOpen:true,schedule:sch}); }
+        else {
+            if(confirm("¿ESTÁ SEGURO DE ELIMINAR ESTA ACTIVIDAD?")){
+                const { deleteDoc } = window.FirebaseSDK;
+                try {
+                    await deleteDoc(docRef('pm_schedules', sch.id));
+                    loadSchedules();
+                } catch(e) {
+                    alert("ERROR AL ELIMINAR: " + e.message);
+                }
+            }
+        }
     };
     const confirmDel = async mode => {
         const { deleteDoc:dd, writeBatch:wb } = window.FirebaseSDK;
