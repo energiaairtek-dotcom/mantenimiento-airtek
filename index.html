@@ -798,10 +798,10 @@ const App = () => {
         if (!user || !dbRef.current) return;
         const { collection, onSnapshot } = window.FirebaseSDK;
         const base = ['artifacts', appId, 'public', 'data'];
-        // Realtime for zones and nodes (small, structural data)
+        // Realtime for zones and nodes
         const unZ = onSnapshot(collection(dbRef.current, ...base, 'pm_zones'), s => setZones(s.docs.map(d=>({...d.data(),id:d.id}))), e=>console.error(e));
         const unN = onSnapshot(collection(dbRef.current, ...base, 'pm_nodes'), s => setNodes(s.docs.map(d=>({...d.data(),id:d.id}))), e=>console.error(e));
-        // Initial load for schedules
+        // Initial load
         loadSchedules();
         // Poll every 2 minutes
         pollRef.current = setInterval(loadSchedules, 120000);
@@ -819,56 +819,57 @@ const App = () => {
             const uid = cred.user.uid;
             let profile = null;
 
-            // 1. Buscar en airtek_users (coleción unificada) PRIMERO
+            // 1. Intentar en airtek_users
             try {
-                const unifiedSnap = await getDoc(docFn(dbRef.current, 'airtek_users', uid));
-                if (unifiedSnap.exists()) {
-                    const d = unifiedSnap.data();
-                    // Verificar que tenga acceso aprobado
-                    if (d.approved === false) {
-                        await window.FirebaseSDK.signOut(authRef.current);
-                        await signInAnonymously(authRef.current);
-                        setLoginError('Tu cuenta está pendiente de aprobación.');
-                        setLoginLoading(false); return;
-                    }
+                const snapUnified = await getDoc(docFn(dbRef.current, 'airtek_users', uid));
+                if (snapUnified.exists()) {
+                    const d = snapUnified.data();
                     profile = {
                         nombre: d.name || d.nombre || cred.user.email,
-                        email:  d.email || cred.user.email,
-                        rol:    (d.apps && d.apps.pm) || d.rol || 'lector',
-                        coordinacion: d.pmCoordinaciones || d.coordinacion || null,
+                        rol: (d.apps && d.apps.pm) || d.role || d.rol || 'lector',
+                        coordinacion: d.coordinacion || null
                     };
                 }
-            } catch(err) { console.warn('airtek_users lookup failed:', err.message); }
+            } catch(err) { console.warn('airtek_users lookup failed'); }
 
-            // 2. Fallback: buscar en pm_users (legacy)
-            if (!profile) {
+            // 2. Fallback: energy_users
+            if (!profile || profile.rol === 'lector') {
                 try {
-                    const legacySnap = await getDoc(docRef('pm_users', uid));
-                    if (legacySnap.exists()) profile = legacySnap.data();
-                } catch(err) { console.warn('pm_users lookup failed'); }
+                    const snapLegacy = await getDoc(docFn(dbRef.current, 'energy_users', uid));
+                    if (snapLegacy.exists()) {
+                        const dl = snapLegacy.data();
+                        profile = {
+                            nombre: dl.name || dl.nombre || profile?.nombre || cred.user.email,
+                            rol: dl.role || dl.rol || 'lector',
+                            coordinacion: dl.coordinacion || profile?.coordinacion || null
+                        };
+                    }
+                } catch(err) { console.warn('energy_users lookup failed'); }
             }
 
-            // 3. Fallback adicional: buscar por email en pm_users
-            if (!profile) {
-                const { collection, getDocs, query, where, limit } = window.FirebaseSDK;
-                const q = query(
-                    collection(dbRef.current, 'artifacts', appId, 'public', 'data', 'pm_users'),
-                    where('email', '==', loginForm.email.trim().toLowerCase()),
-                    limit(1)
-                );
-                const profilesSnap = await getDocs(q);
-                profilesSnap.forEach(d => {
-                    profile = { ...d.data(), id: d.id };
-                });
+            // 3. Fallback adicional: pm_users
+            if (!profile || profile.rol === 'lector') {
+                try {
+                    const snapPm = await getDoc(docRef('pm_users', uid));
+                    if (snapPm.exists()) {
+                        const dp = snapPm.data();
+                        profile = {
+                            nombre: dp.name || dp.nombre || profile?.nombre || cred.user.email,
+                            rol: dp.role || dp.rol || 'lector',
+                            coordinacion: dp.coordinacion || profile?.coordinacion || null
+                        };
+                    }
+                } catch(err) { console.warn('pm_users lookup failed'); }
             }
 
             if (!profile) {
                 await window.FirebaseSDK.signOut(authRef.current);
                 await signInAnonymously(authRef.current);
-                setLoginError('No tienes acceso a esta app. Contacta al administrador.');
+                setLoginError('No tienes acceso autorizado en esta plataforma.');
                 setLoginLoading(false);
                 return;
             }
+
             setCurrentUser({ email: cred.user.email, rol: profile.rol || 'lector', coordinacion: profile.coordinacion || null, nombre: profile.nombre || cred.user.email });
             setIsAdmin(profile.rol === 'admin');
             setLoginModal(false);
@@ -1320,7 +1321,10 @@ const App = () => {
             await updateDoc(docRef('pm_schedules', id), upd);
             setActiveEdit(null);
             loadSchedules();
-        } catch(e){ console.error(e); }
+        } catch(e){ 
+            console.error(e); 
+            alert("ERROR AL GUARDAR: " + (e.message.includes('permission-denied') ? "No tienes permisos suficientes." : e.message));
+        }
     };
 
     // Helper: next weekday date string from a base date + N days
@@ -1341,12 +1345,12 @@ const App = () => {
             if(status==='COMPLETADO' && sch.isRecurring && sch.repeatDays) {
                 const nextDate = nextWeekday(sch.date, Number(sch.repeatDays));
                 const nextDoc = {
-                    activityName: sch.activityName||'INSPECCIÓN PM',
-                    activityType: sch.activityType||'planificada',
-                    coordinacion: sch.coordinacion||'OPERACIONES',
+                    activityName: sch.activityName || 'INSPECCIÓN PM',
+                    activityType: sch.activityType || 'planificada',
+                    coordinacion: sch.coordinacion || 'OPERACIONES',
                     date: nextDate,
                     zoneId: sch.zoneId,
-                    scope: sch.scope,
+                    scope: sch.scope || 'node',
                     nodeId: sch.nodeId||null,
                     nodes: sch.nodes||[],
                     techs:'', odt:'', odtLink:'', reason:'',
@@ -1359,7 +1363,10 @@ const App = () => {
                 await addDoc(db('pm_schedules'), nextDoc);
             }
             loadSchedules();
-        } catch(e){console.error(e);}
+        } catch(e){
+            console.error(e);
+            alert("ERROR AL ACTUALIZAR ESTADO: " + (e.message.includes('permission-denied') ? "No tienes permisos suficientes." : e.message));
+        }
     };
 
     const promptDelete = sch => {
@@ -2493,4 +2500,3 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 </script>
 </body>
 </html>
-
