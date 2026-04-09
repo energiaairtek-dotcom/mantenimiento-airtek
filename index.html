@@ -827,7 +827,7 @@ const App = () => {
                     profile = {
                         nombre: d.name || d.nombre || cred.user.email,
                         rol: (d.apps && d.apps.pm) || d.role || d.rol || 'lector',
-                        coordinacion: d.coordinacion || null
+                        coordinacion: d.pmCoordinaciones || d.coordinacion || null
                     };
                 }
             } catch(err) { console.warn('airtek_users lookup failed'); }
@@ -987,9 +987,39 @@ const App = () => {
     };
 
     const handleDeleteUser = async (u) => {
-        if (!confirm(`¿ELIMINAR usuario ${u.nombre}? Esta acción no elimina su cuenta de Firebase Auth.`)) return;
+        if (!confirm(`¿ELIMINAR usuario ${u.nombre||u.email}? Esta acción no elimina su cuenta de Firebase Auth.`)) return;
         const { deleteDoc:dd } = window.FirebaseSDK;
-        try { await dd(docRef('pm_users', u.id)); } catch(e){ console.error(e); }
+        try { 
+            await dd(docRef('pm_users', u.id)); 
+            alert(`✓ Usuario eliminado correctamente.`);
+        } catch(e){ 
+            console.error(e); 
+            alert("❌ ERROR: " + (e.message.includes('permission-denied') ? "No tienes permisos suficientes." : e.message));
+        }
+    };
+
+    const handleDeleteZone = async (z) => {
+        if (!confirm(`¿ELIMINAR zona ${z.name}? Se borrará de la base de datos.`)) return;
+        const { deleteDoc:dd } = window.FirebaseSDK;
+        try { 
+            await dd(docRef('pm_zones', z.id)); 
+            alert(`✓ Zona ${z.name} eliminada.`);
+        } catch(e){ 
+            console.error(e); 
+            alert("❌ ERROR: " + (e.message.includes('permission-denied') ? "No tienes permisos suficientes." : e.message));
+        }
+    };
+
+    const handleDeleteNode = async (n) => {
+        if (!confirm(`¿ELIMINAR nodo ${n.name}? Se borrará de la base de datos.`)) return;
+        const { deleteDoc:dd } = window.FirebaseSDK;
+        try { 
+            await dd(docRef('pm_nodes', n.id)); 
+            alert(`✓ Nodo ${n.name} eliminado.`);
+        } catch(e){ 
+            console.error(e); 
+            alert("❌ ERROR: " + (e.message.includes('permission-denied') ? "No tienes permisos suficientes." : e.message));
+        }
     };
     // Normaliza coordinacion a array (soporta string legacy y array nuevo)
     const userCoords = () => {
@@ -1387,16 +1417,20 @@ const App = () => {
     const confirmDel = async mode => {
         const { deleteDoc:dd, writeBatch:wb } = window.FirebaseSDK;
         try {
-            if(mode==='SINGLE'){ await dd(docRef('pm_schedules', delP.schedule.id)); }
-            else {
+            if(mode==='SINGLE'){ 
+                await dd(docRef('pm_schedules', delP.schedule.id)); 
+            } else {
                 const list = schedules.filter(s=>s.groupId===delP.schedule.groupId);
                 const batch = wb(dbRef.current);
                 list.forEach(s=>batch.delete(docRef('pm_schedules',s.id)));
                 await batch.commit();
-                alert(`${list.length} MANTENIMIENTOS ELIMINADOS.`);
+                alert(`✓ ${list.length} MANTENIMIENTOS ELIMINADOS CORRECTAMENTE.`);
             }
             loadSchedules();
-        } catch(e){console.error(e);}
+        } catch(e){
+            console.error(e);
+            alert("❌ ERROR AL ELIMINAR: " + (e.message.includes('permission-denied') ? "No tienes permisos suficientes (Actualiza las reglas de Firebase)." : e.message));
+        }
         setDelP({isOpen:false,schedule:null});
     };
 
@@ -1503,20 +1537,6 @@ const App = () => {
 
         return (
             <div className="card card-xl p-4 sm:p-5" style={{position:'relative'}}>
-                {delP.isOpen && (
-                    <div className="del-overlay">
-                        <div className="del-modal">
-                            <div style={{width:48,height:48,background:'#fef2f2',color:'#ef4444',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 14px'}}><TrashIco /></div>
-                            <div style={{fontSize:'.68rem',fontWeight:900,marginBottom:6}}>TAREA RECURRENTE</div>
-                            <div style={{fontSize:'.6rem',color:'var(--muted)',lineHeight:1.5,marginBottom:18}}>Esta actividad es recurrente. ¿Qué deseas eliminar?</div>
-                            <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                                <button onClick={()=>confirmDel('SERIES')} className="btn" style={{background:'#ef4444',color:'#fff',width:'100%',padding:'12px',boxShadow:'0 3px 12px rgba(239,68,68,.3)'}}>ELIMINAR TODA LA SERIE</button>
-                                <button onClick={()=>confirmDel('SINGLE')} className="btn btn-pause" style={{width:'100%',padding:'12px'}}>SOLO ESTA FECHA</button>
-                                <button onClick={()=>setDelP({isOpen:false,schedule:null})} className="btn btn-reopen" style={{width:'100%',padding:'10px',marginTop:4}}>CANCELAR</button>
-                            </div>
-                        </div>
-                    </div>
-                )}
 
                 {/* Header */}
                 <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
@@ -1616,6 +1636,30 @@ const App = () => {
         <div style={{minHeight:'100vh',paddingBottom:96}}>
             {/* Tooltip DOM node — populated directly by showTooltip() without React state */}
             <div ref={tooltipRef} className="day-tooltip" style={{display:'none',width:276,position:'fixed',zIndex:9999}} />
+
+            {/* ── MODAL ELIMINAR RECURRENTE (NUEVO DISEÑO) ── */}
+            {delP.isOpen && (
+                <div style={{position:'fixed',inset:0,background:'rgba(13,27,42,.6)',backdropFilter:'blur(5px)',zIndex:10000,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
+                    <div style={{background:'var(--surface)',borderRadius:30,padding:32,width:'100%',maxWidth:400,boxShadow:'0 25px 70px rgba(0,0,0,.4)',textAlign:'center',animation:'slideUp .3s ease-out'}}>
+                        <div style={{width:60,height:60,background:'#fff1f2',color:'#f43f5e',borderRadius:20,margin:'0 auto 20px',display:'flex',alignItems:'center',justifyContent:'center',transform:'rotate(-5deg)'}}>
+                            <TrashIco c="h-7 w-7" />
+                        </div>
+                        <div style={{fontSize:'.85rem',fontWeight:900,letterSpacing:'.05em',marginBottom:8,color:'var(--foreground)'}}>TAREA RECURRENTE</div>
+                        <div style={{fontSize:'.65rem',color:'var(--muted)',lineHeight:1.6,marginBottom:28,fontWeight:700}}>¿Cómo deseas proceder con la eliminación de esta serie de mantenimientos?</div>
+                        <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                            <button onClick={()=>confirmDel('SERIES')} className="btn btn-full" style={{background:'#f43f5e',boxShadow:'0 8px 20px rgba(244,63,94,.3)',padding:'14px',borderRadius:16,fontSize:'.65rem'}}>
+                                ELIMINAR TODA LA SERIE
+                            </button>
+                            <button onClick={()=>confirmDel('SINGLE')} className="btn btn-dark" style={{background:'var(--surface)',color:'var(--foreground)',border:'1.5px solid var(--border)',padding:'14px',borderRadius:16,fontSize:'.65rem'}}>
+                                SOLO ESTA FECHA
+                            </button>
+                            <button onClick={()=>setDelP({isOpen:false,schedule:null})} className="btn btn-reopen" style={{width:'100%',padding:'12px',marginTop:6,fontSize:'.6rem'}}>
+                                VOLVER / CANCELAR
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* ── RESCHEDULE MODAL ── */}
             {reschedule.open && (
@@ -2436,7 +2480,7 @@ const App = () => {
                                                         <span style={{fontSize:'.75rem',fontWeight:900}}>{z.name}</span>
                                                         <span style={{fontSize:'.58rem',color:'var(--muted)',fontWeight:700}}>{nodes.filter(n=>n.zoneId===z.id).length} NODOS</span>
                                                     </div>
-                                                    {isAdmin && <button onClick={()=>deleteItem('pm_zones',z.id,z.name)} className="btn btn-delete"><TrashIco /></button>}
+                                                    {isAdmin && <button onClick={()=>handleDeleteZone(z)} className="btn btn-delete"><TrashIco /></button>}
                                                 </div>
                                                 {isAdmin && (
                                                     <div style={{marginTop:12,paddingTop:12,borderTop:'1px solid var(--border)',display:'flex',flexWrap:'wrap',gap:6}}>
@@ -2488,7 +2532,7 @@ const App = () => {
                                                         {znodes.map(n=>(
                                                             <div key={n.id} className="node-item">
                                                                 <span className="node-name">{n.name}</span>
-                                                                {isAdmin && <button onClick={()=>deleteItem('pm_nodes',n.id,n.name)} style={{color:'#dc2626',background:'none',border:'none',cursor:'pointer',padding:4,lineHeight:0}}><TrashIco /></button>}
+                                                                {isAdmin && <button onClick={()=>handleDeleteNode(n)} style={{color:'#f43f5e',background:'none',border:'none',cursor:'pointer',padding:4,lineHeight:0}}><TrashIco /></button>}
                                                             </div>
                                                         ))}
                                                     </div>
