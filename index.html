@@ -1311,10 +1311,9 @@ const App = () => {
         const sch = schedules.find(s=>s.id===id);
         if(!canWrite(sch?.coordinacion)){ alert("SIN PERMISOS."); return; }
         const { techs='', odt='', odtLink='', odts=[], repeatDays, activityName, isRecurring } = data;
-        if(!techs.trim()){ alert("INGRESE LOS TÉCNICOS."); return; }
         const { updateDoc } = window.FirebaseSDK;
         const upd = { techs:techs.toUpperCase(), odt, odtLink, odts };
-        if(repeatDays && repeatDays > 0) upd.repeatDays = repeatDays;
+        if(repeatDays && repeatDays > 0) upd.repeatDays = Number(repeatDays);
         if(activityName) upd.activityName = activityName.trim().toUpperCase();
         if(typeof isRecurring === 'boolean') upd.isRecurring = isRecurring;
         try {
@@ -2494,3 +2493,4 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 </script>
 </body>
 </html>
+
