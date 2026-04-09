@@ -133,7 +133,7 @@
 
         /* ── HOVER TOOLTIP ── */
         .day-tooltip {
-            position:fixed; z-index:200; pointer-events:none;
+            position:fixed; z-index:200; pointer-events:auto;
             background:var(--dark); color:#fff;
             border:1px solid rgba(255,255,255,.12);
             border-radius:16px; padding:14px 16px;
@@ -141,6 +141,16 @@
             box-shadow:var(--sh-pop);
             animation:tooltipIn .15s cubic-bezier(.16,1,.3,1);
         }
+        .tt-scroll {
+            max-height: 420px;
+            overflow-y: auto;
+            padding-right: 6px;
+            margin-right: -6px;
+        }
+        .tt-scroll::-webkit-scrollbar { width: 4px; }
+        .tt-scroll::-webkit-scrollbar-track { background: transparent; }
+        .tt-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius: 10px; }
+        .tt-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.25); }
         @keyframes tooltipIn { from{opacity:0;transform:scale(.95) translateY(4px)} to{opacity:1;transform:scale(1) translateY(0)} }
         .tt-date { font-size:.58rem; font-weight:800; letter-spacing:.15em; color:rgba(255,255,255,.4); margin-bottom:8px; }
         .tt-row { display:flex; align-items:flex-start; gap:8px; padding:6px 0; border-top:1px solid rgba(255,255,255,.07); }
@@ -310,7 +320,7 @@
 <script type="module">
     import { initializeApp }   from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { getAuth, signInAnonymously, signInWithEmailAndPassword, signOut, onAuthStateChanged, signInWithCustomToken, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import { getFirestore, doc, setDoc, updateDoc, deleteDoc, collection, onSnapshot, addDoc, serverTimestamp, writeBatch, getDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import { getFirestore, doc, setDoc, updateDoc, deleteDoc, collection, onSnapshot, addDoc, serverTimestamp, writeBatch, getDoc, getDocs, query, where, limit, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
     const cfg = {
         apiKey:"AIzaSyDwaK4Z26RfqDwNvwdMqri08oEjwG9qymc",
@@ -321,7 +331,7 @@
         appId:"1:934058211778:web:6cc9d820c41fa90aa5fe5b"
     };
     window.__firebase_config_manual = JSON.stringify(cfg);
-    window.FirebaseSDK = { initializeApp, getAuth, signInAnonymously, signInWithEmailAndPassword, signOut, onAuthStateChanged, signInWithCustomToken, updatePassword, EmailAuthProvider, reauthenticateWithCredential, getFirestore, doc, setDoc, updateDoc, deleteDoc, collection, onSnapshot, addDoc, serverTimestamp, writeBatch, getDoc, getDocs };
+    window.FirebaseSDK = { initializeApp, getAuth, signInAnonymously, signInWithEmailAndPassword, signOut, onAuthStateChanged, signInWithCustomToken, updatePassword, EmailAuthProvider, reauthenticateWithCredential, getFirestore, doc, setDoc, updateDoc, deleteDoc, collection, onSnapshot, addDoc, serverTimestamp, writeBatch, getDoc, getDocs, query, where, limit, orderBy };
     window.dispatchEvent(new Event('firebase-ready'));
 </script>
 
@@ -762,9 +772,10 @@ const App = () => {
 
     const loadSchedules = useCallback(async () => {
         if (!dbRef.current) return;
-        const { collection, getDocs } = window.FirebaseSDK;
+        const { collection, getDocs, query, limit, orderBy } = window.FirebaseSDK;
         try {
-            const snap = await getDocs(collection(dbRef.current, 'artifacts', appId, 'public', 'data', 'pm_schedules'));
+            const q = query(collection(dbRef.current, 'artifacts', appId, 'public', 'data', 'pm_schedules'), orderBy('date', 'desc'), limit(250));
+            const snap = await getDocs(q);
             const data = snap.docs.map(d=>({...d.data(),id:d.id}));
             data.sort((a,b)=>new Date(a.date)-new Date(b.date));
             setSchedules(data);
@@ -790,38 +801,59 @@ const App = () => {
         e.preventDefault();
         setLoginError('');
         setLoginLoading(true);
-        const { signInWithEmailAndPassword, signInAnonymously } = window.FirebaseSDK;
+        const { signInWithEmailAndPassword, signInAnonymously, getDoc, doc: docFn } = window.FirebaseSDK;
         try {
-            // Sign in with email/password
             const cred = await signInWithEmailAndPassword(authRef.current, loginForm.email.trim(), loginForm.password);
-            // Load user profile from pm_users
-            const { collection: col, onSnapshot: onSnap, getDocs, query, where } = window.FirebaseSDK;
-            const { getDocs: gd, query: q, where: w } = window.FirebaseSDK;
-            // Read user profile document (email as doc id)
-            const profileRef = docRef('pm_users', cred.user.uid);
-            const { getDoc } = window.FirebaseSDK;
+            const uid = cred.user.uid;
             let profile = null;
-            try {
-                const snap = await getDoc(profileRef);
-                if (snap.exists()) profile = snap.data();
-            } catch(err) { console.warn('Profile not found by uid, trying email lookup'); }
 
-            if (!profile) {
-                // Fallback: search by email field
-                const profilesSnap = await window.FirebaseSDK.getDocs(
-                    window.FirebaseSDK.collection(dbRef.current, 'artifacts', appId, 'public', 'data', 'pm_users')
-                );
-                profilesSnap.forEach(d => {
-                    if (d.data().email?.toLowerCase() === loginForm.email.trim().toLowerCase()) {
-                        profile = { ...d.data(), id: d.id };
+            // 1. Buscar en airtek_users (coleción unificada) PRIMERO
+            try {
+                const unifiedSnap = await getDoc(docFn(dbRef.current, 'airtek_users', uid));
+                if (unifiedSnap.exists()) {
+                    const d = unifiedSnap.data();
+                    // Verificar que tenga acceso aprobado
+                    if (d.approved === false) {
+                        await window.FirebaseSDK.signOut(authRef.current);
+                        await signInAnonymously(authRef.current);
+                        setLoginError('Tu cuenta está pendiente de aprobación.');
+                        setLoginLoading(false); return;
                     }
+                    profile = {
+                        nombre: d.name || d.nombre || cred.user.email,
+                        email:  d.email || cred.user.email,
+                        rol:    (d.apps && d.apps.pm) || d.rol || 'lector',
+                        coordinacion: d.pmCoordinaciones || d.coordinacion || null,
+                    };
+                }
+            } catch(err) { console.warn('airtek_users lookup failed:', err.message); }
+
+            // 2. Fallback: buscar en pm_users (legacy)
+            if (!profile) {
+                try {
+                    const legacySnap = await getDoc(docRef('pm_users', uid));
+                    if (legacySnap.exists()) profile = legacySnap.data();
+                } catch(err) { console.warn('pm_users lookup failed'); }
+            }
+
+            // 3. Fallback adicional: buscar por email en pm_users
+            if (!profile) {
+                const { collection, getDocs, query, where, limit } = window.FirebaseSDK;
+                const q = query(
+                    collection(dbRef.current, 'artifacts', appId, 'public', 'data', 'pm_users'),
+                    where('email', '==', loginForm.email.trim().toLowerCase()),
+                    limit(1)
+                );
+                const profilesSnap = await getDocs(q);
+                profilesSnap.forEach(d => {
+                    profile = { ...d.data(), id: d.id };
                 });
             }
 
             if (!profile) {
                 await window.FirebaseSDK.signOut(authRef.current);
                 await signInAnonymously(authRef.current);
-                setLoginError('Usuario no encontrado en el sistema. Contacte al administrador.');
+                setLoginError('No tienes acceso a esta app. Contacta al administrador.');
                 setLoginLoading(false);
                 return;
             }
@@ -881,9 +913,12 @@ const App = () => {
     // Load pm_users list when admin is active
     useEffect(() => {
         if (!canAdmin || !dbRef.current) { setPmUsers([]); return; }
-        const { collection, onSnapshot } = window.FirebaseSDK;
-        const unU = onSnapshot(
+        const { collection, onSnapshot, query, limit } = window.FirebaseSDK;
+        const q = query(
             collection(dbRef.current, 'artifacts', appId, 'public', 'data', 'pm_users'),
+            limit(100)
+        );
+        const unU = onSnapshot(q,
             s => setPmUsers(s.docs.map(d=>({...d.data(),id:d.id}))),
             e => console.error(e)
         );
@@ -903,9 +938,7 @@ const App = () => {
             setNewUserLoading(false); return;
         }
         try {
-            // Use Firebase Admin-style: create via REST API with current user's token
-            const idToken = await authRef.current.currentUser.getIdToken();
-            // Create Firebase Auth user via Identity Toolkit REST API
+            // Crear cuenta en Firebase Auth via REST API
             const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=AIzaSyDwaK4Z26RfqDwNvwdMqri08oEjwG9qymc`, {
                 method: 'POST',
                 headers: {'Content-Type':'application/json'},
@@ -914,14 +947,23 @@ const App = () => {
             const data = await res.json();
             if (data.error) { setNewUserError('Error al crear cuenta: ' + (data.error.message||'desconocido')); setNewUserLoading(false); return; }
             const uid = data.localId;
-            // Save profile in pm_users with UID as doc ID
-            const { setDoc } = window.FirebaseSDK;
+            const { setDoc: sd } = window.FirebaseSDK;
             const coordFinal = rol === 'admin' ? COORDINACIONES : coords;
-            await setDoc(docRef('pm_users', uid), {
+            const profileData = {
                 nombre: nombre.trim().toUpperCase(),
                 email: email.trim().toLowerCase(),
                 rol,
                 coordinacion: rol === 'admin' ? COORDINACIONES : (coords.length === 1 ? coords[0] : coords),
+            };
+            // Guardar en pm_users (legacy)
+            await sd(docRef('pm_users', uid), profileData);
+            // Guardar también en airtek_users (unificada) para acceso cruzado entre apps
+            await sd(window.FirebaseSDK.doc(dbRef.current, 'airtek_users', uid), {
+                name: nombre.trim().toUpperCase(),
+                email: email.trim().toLowerCase(),
+                approved: true,
+                apps: { nodos: null, pm: rol, almacen: null },
+                pmCoordinaciones: rol === 'admin' ? COORDINACIONES : (coords.length === 1 ? coords[0] : coords),
             });
             setNewUser({nombre:'',email:'',password:'',rol:'editor',coords:[]});
             alert(`✓ Usuario ${nombre.trim().toUpperCase()} creado correctamente.`);
@@ -1087,10 +1129,11 @@ const App = () => {
                 }).join('');
 
                 el.innerHTML = `
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:9px;gap:8px">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px">
                         <div style="font-size:.57rem;font-weight:800;letter-spacing:.1em;color:rgba(255,255,255,.4)">${dateLabel}</div>
-                        <div style="font-size:.57rem;font-weight:800;color:rgba(255,255,255,.3);white-space:nowrap">${inspections.length} INSP.</div>
-                    </div>${rows}`;
+                        <div style="font-size:.57rem;font-weight:800;color:rgba(255,255,255,.3);white-space:nowrap">${inspections.length} ACTIVIDADES</div>
+                    </div>
+                    <div class="tt-scroll">${rows}</div>`;
 
                 const TW = 280;
                 let x = rect.left + rect.width/2 - TW/2;
@@ -1105,15 +1148,24 @@ const App = () => {
         };
 
         const onOut = e => {
+            const rel = e.relatedTarget;
+            if(rel && (rel === tooltipRef.current || tooltipRef.current.contains(rel))) return;
             const cell = e.target.closest('[data-date]');
             if(!cell) return;
-            if(cell.contains(e.relatedTarget)) return;
+            if(rel && cell.contains(rel)) return;
             clearTimeout(ttTimer.current);
+            if(tooltipRef.current) tooltipRef.current.style.display = 'none';
+        };
+
+        const onTtOut = e => {
+            const rel = e.relatedTarget;
+            if(rel && (rel.closest('[data-date]') || tooltipRef.current.contains(rel))) return;
             if(tooltipRef.current) tooltipRef.current.style.display = 'none';
         };
 
         grid.addEventListener('mouseover', onOver);
         grid.addEventListener('mouseout',  onOut);
+        if(tooltipRef.current) tooltipRef.current.addEventListener('mouseleave', onTtOut);
         // No cleanup needed since calGridRef callback will receive null when the node unmounts
     }, []);
 
@@ -1533,7 +1585,7 @@ const App = () => {
     return (
         <div style={{minHeight:'100vh',paddingBottom:96}}>
             {/* Tooltip DOM node — populated directly by showTooltip() without React state */}
-            <div ref={tooltipRef} className="day-tooltip" style={{display:'none',width:276,position:'fixed',zIndex:9999,pointerEvents:'none'}} />
+            <div ref={tooltipRef} className="day-tooltip" style={{display:'none',width:276,position:'fixed',zIndex:9999}} />
 
             {/* ── RESCHEDULE MODAL ── */}
             {reschedule.open && (
