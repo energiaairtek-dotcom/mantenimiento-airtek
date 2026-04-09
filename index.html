@@ -1031,14 +1031,14 @@ const App = () => {
     // Can schedule/edit activities for a given coordinacion
     const canWrite = (coordinacion) => {
         if (!currentUser) return false;
-        if (currentUser.rol === 'admin' || isAdmin) return true;
+        if (currentUser.rol === 'admin' || currentUser.rol === 'supervisor' || isAdmin) return true;
         if (currentUser.rol === 'editor') return !coordinacion || userCoords().includes(coordinacion);
         return false;
     };
     // Can manage zones and nodes (admin only)
-    const canAdmin = currentUser?.rol === 'admin';
+    const canAdmin = currentUser?.rol === 'admin' || currentUser?.rol === 'supervisor';
     // Can access programar tab
-    const canSchedule = currentUser?.rol === 'admin' || currentUser?.rol === 'editor';
+    const canSchedule = currentUser?.rol === 'admin' || currentUser?.rol === 'editor' || currentUser?.rol === 'supervisor';
 
     // ── Derived data ──
     const getZoneName  = useCallback(id => zones.find(z=>z.id===id)?.name || 'DESCONOCIDA', [zones]);
@@ -1812,7 +1812,7 @@ const App = () => {
                                 <div style={{textAlign:'right'}}>
                                     <div style={{fontSize:'.6rem',fontWeight:800,color:'#5eead4',letterSpacing:'.1em'}}>{currentUser.nombre || currentUser.email}</div>
                                     <div style={{fontSize:'.55rem',fontWeight:700,color:'rgba(255,255,255,.4)',letterSpacing:'.1em',marginTop:1}}>
-                                        {currentUser.rol==='admin'?'ADMINISTRADOR':currentUser.rol==='editor'?`EDITOR · ${userCoords().join(' / ')||''}` : 'LECTURA'}
+                                        {currentUser.rol==='admin'?'ADMINISTRADOR':currentUser.rol==='supervisor'?'SUPERVISOR':currentUser.rol==='editor'?`EDITOR · ${userCoords().join(' / ')||''}` : 'LECTURA'}
                                     </div>
                                 </div>
                                 <button onClick={()=>{setPwError('');setPwSuccess('');setPwForm({current:'',newPw:'',confirm:''});setPwModal(true);}}
@@ -2554,3 +2554,4 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 </script>
 </body>
 </html>
+
