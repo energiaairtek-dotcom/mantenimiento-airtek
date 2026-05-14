@@ -765,10 +765,21 @@ const App = () => {
                 dbRef.current = getFirestore(app);
                 const auth = getAuth(app);
                 authRef.current = auth;
-                // Sign in anonymously for data read access
+                // Eliminamos signInAnonymously para evitar exposición pública de datos
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token);
-                else await signInAnonymously(auth);
-                const unsub = onAuthStateChanged(auth, u => { if(u){setUser(u);setIsCloud(true);} setLoading(false); });
+                
+                const unsub = onAuthStateChanged(auth, u => { 
+                    if(u && !u.isAnonymous){
+                        setUser(u);
+                        setIsCloud(true);
+                    } else if (u && u.isAnonymous) {
+                        try { window.FirebaseSDK.signOut(auth); } catch(ex){}
+                        setUser(null);
+                    } else {
+                        setUser(null);
+                    }
+                    setLoading(false); 
+                });
                 return unsub;
             } catch(e) { setLoading(false); }
         };
@@ -864,7 +875,7 @@ const App = () => {
 
             if (!profile) {
                 await window.FirebaseSDK.signOut(authRef.current);
-                await signInAnonymously(authRef.current);
+                setUser(null);
                 setLoginError('No tienes acceso autorizado en esta plataforma.');
                 setLoginLoading(false);
                 return;
@@ -886,10 +897,10 @@ const App = () => {
     };
 
     const handleLogout = async () => {
-        const { signOut: so, signInAnonymously } = window.FirebaseSDK;
+        const { signOut: so } = window.FirebaseSDK;
         try {
             await so(authRef.current);
-            await signInAnonymously(authRef.current);
+            setUser(null);
         } catch(e) { console.error(e); }
         setCurrentUser(null);
         setIsAdmin(false);
@@ -2554,4 +2565,5 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 </script>
 </body>
 </html>
+
 
